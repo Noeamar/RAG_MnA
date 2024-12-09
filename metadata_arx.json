@@ -1,0 +1,29 @@
+{
+    "documents": [
+      {
+        "file_name": "scraped_companies_reorganized.csv",
+        "type": "CSV",
+        "description": "Liste des entreprises avec les informations de base comme le CA, les secteurs, etc.",
+        "source": "C:\\Users\\namar\\Documents\\poc_RAG\\Projet_test\\RAG_M-A\\Data\\scraped_companies_reorganized.csv",
+        "last_modified": "2024-11-20",
+        "tags": ["entreprises", "secteurs", "CA"]
+      },
+      {
+        "file_name": "scraped_news_grid.csv",
+        "type": "CSV",
+        "description": "Collection d'articles et de nouvelles liées aux entreprises analysées et au marché de la finance d'entreprise.",
+        "source": "C:\\Users\\namar\\Documents\\poc_RAG\\Projet_test\\RAG_M-A\\Data\\scraped_news_grid.csv",
+        "last_modified": "2024-11-22",
+        "tags": ["nouvelles", "entreprises", "actualités", "opérations"]
+      },
+      {
+        "file_name": "exported_results.csv",
+        "type": "CSV",
+        "description": "Liste des cabinets de conseils, leurs compétences et leur structure.",
+        "source": "C:\\Users\\namar\\Documents\\poc_RAG\\Projet_test\\RAG_M-A\\Data\\exported_results.csv",
+        "last_modified": "2024-11-23",
+        "tags": ["conseil", "M&A", "fonds d'investissements"]
+      }
+    ]
+  }
+  
