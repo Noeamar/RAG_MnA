@@ -337,7 +337,7 @@ def rag_fusion(question):
 
     # Génération des requêtes et récupération des documents
     queries = generate_queries.invoke({"question": question})
-    results = [retriever.get_relevant_documents(q) for q in queries]
+    results = [retriever.invoke(q) for q in queries]
     reranked_docs = reciprocal_rank_fusion(results)
 
     # Préparer les documents pour le modèle LLM
