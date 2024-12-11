@@ -7,7 +7,6 @@
 import bs4
 from langchain import hub
 from langchain.text_splitter import RecursiveCharacterTextSplitter
-from langchain_community.document_loaders import WebBaseLoader
 from langchain_community.vectorstores import Chroma
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.runnables import RunnablePassthrough
@@ -266,37 +265,34 @@ def rag_query(question):
 
 # In[ ]:
 
-
 import os
-from langchain_core.runnables import RunnablePassthrough
-from langchain_core.output_parsers import StrOutputParser
-from langchain_openai import ChatOpenAI, OpenAIEmbeddings
 from langchain.prompts import ChatPromptTemplate
+from langchain_openai import ChatOpenAI
+from langchain_core.output_parsers import StrOutputParser
+from langchain_core.runnables import RunnablePassthrough
+from langchain_chroma import Chroma
+from json import dumps, loads
 from langchain.schema import Document
-from langchain_community.vectorstores import Chroma
-from langchain_community.document_loaders import WebBaseLoader
-from operator import itemgetter
-from langchain.text_splitter import RecursiveCharacterTextSplitter
-from langchain.load import dumps, loads
+from langchain.vectorstores import FAISS
 
-def rag_fusion(question):
+def rag_fusion(question: str) -> str:
+    # Configurer les clés API
     # Charger les clés API depuis les variables d'environnement
     os.environ['LANGCHAIN_TRACING_V2'] = 'true'
     os.environ['LANGCHAIN_ENDPOINT'] = 'https://api.smith.langchain.com'
-    langchain_api_key = os.environ.get('LANGCHAIN_API_KEY')
-    openai_api_key = os.environ.get('OPENAI_API_KEY')
-    
-    if not langchain_api_key or not openai_api_key:
-        raise ValueError("Les clés API OpenAI et LangChain ne sont pas configurées.")
-    
-    # Recharger le vectorstore depuis le répertoire persist_directory
-    persist_directory = "C:\\Users\\namar\\Documents\\poc_RAG\\Projet_test\\RAG_M-A\\Data\\ChromaDB"
-    vectorstore = Chroma(
-        persist_directory=persist_directory,
-        embedding_function=OpenAIEmbeddings()
-    )
+    os.environ['LANGCHAIN_TRACING_V2'] = 'true'
+    os.environ['LANGCHAIN_ENDPOINT'] = 'https://api.smith.langchain.com'
+    os.environ['LANGCHAIN_API_KEY'] = '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'
 
-    print("VectorStore chargé depuis le disque.")
+    os.environ['OPENAI_API_KEY'] = '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'
+
+    faiss_index_path = "C:\\Users\\namar\\Documents\\poc_RAG\\Projet_test\\RAG_MnA\\Data\\FAISS_index"
+    embedding = OpenAIEmbeddings()
+    vectorstore = FAISS.load_local(
+            faiss_index_path, 
+            embeddings=embedding, 
+            allow_dangerous_deserialization=True
+        )
 
     # Créer un système de récupération
     retriever = vectorstore.as_retriever(
@@ -307,43 +303,53 @@ def rag_fusion(question):
         }
     )
 
-    # Prompt pour générer les requêtes
+    # Génération des requêtes
     query_generation_template = """You are a helpful assistant that generates multiple search queries based on a single input query. \n
     Generate multiple search queries related to: {question} \n
     Output (4 queries):"""
     prompt_rag_fusion = ChatPromptTemplate.from_template(query_generation_template)
 
     generate_queries = (
-        prompt_rag_fusion 
+        prompt_rag_fusion
         | ChatOpenAI(model='o1-mini')
-        | StrOutputParser() 
-        | (lambda x: x.split("\n"))
+        | StrOutputParser()
+        | (lambda x: x.split("\n"))  # Liste des requêtes
     )
 
-    def reciprocal_rank_fusion(results: list[list], k=60):
-        """ Reciprocal_rank_fusion """
-        fused_scores = {}
-        for docs in results:
-            for rank, doc in enumerate(docs):
-                doc_str = dumps(doc)
-                if doc_str not in fused_scores:
-                    fused_scores[doc_str] = 0
-                fused_scores[doc_str] += 1 / (rank + k)
-
-        return [
-            (loads(doc), score)
-            for doc, score in sorted(fused_scores.items(), key=lambda x: x[1], reverse=True)
-        ]
-
-    # Génération des requêtes et récupération des documents
+    # Étape 1 : Générer les requêtes
     queries = generate_queries.invoke({"question": question})
-    results = [retriever.invoke(q) for q in queries]
-    reranked_docs = reciprocal_rank_fusion(results)
+    print(f"Requêtes générées : {queries}")
 
-    # Préparer les documents pour le modèle LLM
+    # Étape 2 : Récupération des documents
+    results = [retriever.invoke(q) for q in queries]
+    print(f"Documents récupérés : {results}")
+
+    # Étape 3 : Fusion Reciprocal Rank Fusion
+    fused_scores = {}
+    for docs in results:
+        for rank, doc in enumerate(docs):
+            # Convertir le Document en dict avant la sérialisation
+            doc_dict = {
+                "page_content": doc.page_content,
+                "metadata": doc.metadata
+            }
+            doc_str = dumps(doc_dict)
+            if doc_str not in fused_scores:
+                fused_scores[doc_str] = 0
+            fused_scores[doc_str] += 1 / (rank + 60)
+
+    reranked_docs = [
+        (Document(page_content=d["page_content"], metadata=d["metadata"]), score)
+        for d_str, score in sorted(fused_scores.items(), key=lambda x: x[1], reverse=True)
+        for d in [loads(d_str)]
+        ]    
+    
+    print(f"Documents fusionnés : {len(reranked_docs)} documents rerankés.")
+
+    # Préparer le contexte pour le modèle LLM
     context = "\n\n".join([doc.page_content for doc, _ in reranked_docs])
 
-    # Prompt pour répondre à la question
+    # Étape 4 : Répondre à la question
     answer_template = """Answer the following question based on this context:
 
     {context}
@@ -353,14 +359,52 @@ def rag_fusion(question):
     answer_prompt = ChatPromptTemplate.from_template(answer_template)
     llm = ChatOpenAI(model='o1-mini')
 
-    # Générer la réponse finale
-    final_rag_chain = (
-        {"context": context, "question": question} 
-        | answer_prompt
+    # Génération de la réponse
+    final_input = {"context": context, "question": question}
+    answer = (
+        answer_prompt
         | llm
         | StrOutputParser()
-    )
-
-    answer = final_rag_chain.invoke({"question": question, "context": context})
+    ).invoke(final_input)
 
     return answer
+
+# def rag_fusion(question: str) -> str:
+#     try:
+#         # Charger l'index FAISS depuis le répertoire
+#         faiss_index_path = "C:\\Users\\namar\\Documents\\poc_RAG\\Projet_test\\RAG_MnA\\Data\\FAISS_index"
+#         embedding = OpenAIEmbeddings()
+#         vectorstore = FAISS.load_local(
+#             faiss_index_path, 
+#             embeddings=embedding, 
+#             allow_dangerous_deserialization=True
+#         )
+
+
+#         print("VectorStore FAISS chargé depuis le disque.")
+
+#         # Effectuer une recherche de similarité directement
+#         results = vectorstore.similarity_search(question, k=3)
+#         print("Documents récupérés :", results)
+
+#         # Si vous souhaitez utiliser un retriever pour unifier votre logique :
+#         retriever = vectorstore.as_retriever(
+#             search_type="mmr",  # Utiliser Maximal Marginal Relevance
+#             search_kwargs={
+#                 "k": 10,  # Récupérer plus de documents
+#                 "score_threshold": 0.01  # Réduire le seuil de score pour inclure plus de résultats
+#             }
+#         )
+#         print("Retriever créé.")
+
+#         docs = retriever.get_relevant_documents(question)
+#         print("Documents via retriever :", docs)
+
+#         if docs:
+#             return docs[0].page_content
+#         else:
+#             return "Aucun document pertinent trouvé."
+#     except Exception as e:
+#         print(f"Erreur dans rag_fusion: {e}")
+#         return f"Erreur: {str(e)}"
+    
