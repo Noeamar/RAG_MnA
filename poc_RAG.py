@@ -277,7 +277,6 @@ from langchain.vectorstores import FAISS
 
 def rag_fusion(question: str) -> str:
     # Configurer les clés API
-    # Charger les clés API depuis les variables d'environnement
     os.environ['LANGCHAIN_TRACING_V2'] = 'true'
     os.environ['LANGCHAIN_ENDPOINT'] = 'https://api.smith.langchain.com'
     os.environ['LANGCHAIN_TRACING_V2'] = 'true'
@@ -294,19 +293,119 @@ def rag_fusion(question: str) -> str:
             allow_dangerous_deserialization=True
         )
 
+    retriever = vectorstore.as_retriever(
+        search_type="mmr",
+        search_kwargs={
+            "k": 10,
+            "score_threshold": 0.01
+        }
+    )
+
+    # Prompt pour la génération des requêtes (base complète)
+    query_generation_template = """You are a seasoned M&A consultant with access to a broad dataset that includes recent news, company profiles, and investment fund details. Given the user's question:
+
+    {question}
+
+    Generate exactly 4 focused queries that will help retrieve the most relevant and comprehensive information from this rich dataset. The queries should cover aspects of M&A news, company insights, and fund activities if relevant. Aim to find highly relevant and up-to-date details that answer the user's inquiry.
+
+    Output 4 queries:
+    """
+    prompt_rag_fusion = ChatPromptTemplate.from_template(query_generation_template)
+
+    generate_queries = (
+        prompt_rag_fusion
+        | ChatOpenAI(model='o1-mini')
+        | StrOutputParser()
+        | (lambda x: x.split("\n"))
+    )
+
+    queries = generate_queries.invoke({"question": question})
+    print(f"Requêtes générées : {queries}")
+
+    results = [retriever.invoke(q) for q in queries]
+    print(f"Documents récupérés : {results}")
+
+    # Fusion RRF
+    fused_scores = {}
+    for docs in results:
+        for rank, doc in enumerate(docs):
+            doc_dict = {
+                "page_content": doc.page_content,
+                "metadata": doc.metadata
+            }
+            doc_str = dumps(doc_dict)
+            if doc_str not in fused_scores:
+                fused_scores[doc_str] = 0
+            fused_scores[doc_str] += 1 / (rank + 60)
+
+    reranked_docs = [
+        (Document(page_content=d["page_content"], metadata=d["metadata"]), score)
+        for d_str, score in sorted(fused_scores.items(), key=lambda x: x[1], reverse=True)
+        for d in [loads(d_str)]
+    ]
+
+    print(f"Documents fusionnés : {len(reranked_docs)} documents rerankés.")
+
+    context = "\n\n".join([doc.page_content for doc, _ in reranked_docs])
+
+    # Prompt pour la réponse finale (base complète)
+    answer_template = """You are an M&A expert who can analyze recent news, company data, and fund information to provide a comprehensive and accurate answer. Using the following context extracted from various M&A-related sources (news, companies, funds), answer the user's question concisely and factually. Highlight relevant deals, company details, or fund strategies if mentioned. Do not invent information that isn't provided.
+
+    Context:
+    {context}
+
+    Question: {question}
+
+    Provide a clear, fact-based answer focusing on the M&A domain.
+    """
+    answer_prompt = ChatPromptTemplate.from_template(answer_template)
+    llm = ChatOpenAI(model='o1-mini')
+
+    final_input = {"context": context, "question": question}
+    answer = (
+        answer_prompt
+        | llm
+        | StrOutputParser()
+    ).invoke(final_input)
+
+    return answer
+
+def rag_fusion_actualites(question: str) -> str:
+    # Configurer les clés API
+    os.environ['LANGCHAIN_TRACING_V2'] = 'true'
+    os.environ['LANGCHAIN_ENDPOINT'] = 'https://api.smith.langchain.com'
+    os.environ['LANGCHAIN_TRACING_V2'] = 'true'
+    os.environ['LANGCHAIN_ENDPOINT'] = 'https://api.smith.langchain.com'
+    os.environ['LANGCHAIN_API_KEY'] = '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'
+
+    os.environ['OPENAI_API_KEY'] = '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'
+
+    faiss_index_path = "C:\\Users\\namar\\Documents\\poc_RAG\\Projet_test\\RAG_MnA\\Data\\FAISS_index_actualites"
+    embedding = OpenAIEmbeddings()
+    vectorstore = FAISS.load_local(
+            faiss_index_path, 
+            embeddings=embedding, 
+            allow_dangerous_deserialization=True
+        )
+
     # Créer un système de récupération
     retriever = vectorstore.as_retriever(
         search_type="mmr",  # Utiliser Maximal Marginal Relevance
         search_kwargs={
-            "k": 10,  # Récupérer plus de documents
-            "score_threshold": 0.01  # Réduire le seuil de score pour inclure plus de résultats
+            "k": 10,
+            "score_threshold": 0.01
         }
     )
 
-    # Génération des requêtes
-    query_generation_template = """You are a helpful assistant that generates multiple search queries based on a single input query. \n
-    Generate multiple search queries related to: {question} \n
-    Output (4 queries):"""
+    # Prompt pour la génération des requêtes
+    query_generation_template = """You are a knowledgeable M&A news analyst. Your role is to generate multiple targeted search queries to retrieve the most relevant and recent M&A news from a specialized news database.
+
+    Given the user's question: {question}
+
+    Generate exactly 4 specific and focused queries related to recent M&A news, announcements, deals, or trends. Ensure these queries help in finding up-to-date and fact-based information about the topic mentioned by the user.
+    Output 4 queries:
+    """
+
     prompt_rag_fusion = ChatPromptTemplate.from_template(query_generation_template)
 
     generate_queries = (
@@ -328,7 +427,6 @@ def rag_fusion(question: str) -> str:
     fused_scores = {}
     for docs in results:
         for rank, doc in enumerate(docs):
-            # Convertir le Document en dict avant la sérialisation
             doc_dict = {
                 "page_content": doc.page_content,
                 "metadata": doc.metadata
@@ -342,24 +440,28 @@ def rag_fusion(question: str) -> str:
         (Document(page_content=d["page_content"], metadata=d["metadata"]), score)
         for d_str, score in sorted(fused_scores.items(), key=lambda x: x[1], reverse=True)
         for d in [loads(d_str)]
-        ]    
-    
+    ]
+
     print(f"Documents fusionnés : {len(reranked_docs)} documents rerankés.")
 
     # Préparer le contexte pour le modèle LLM
     context = "\n\n".join([doc.page_content for doc, _ in reranked_docs])
 
-    # Étape 4 : Répondre à la question
-    answer_template = """Answer the following question based on this context:
+    # Prompt pour la réponse finale
+    answer_template = """You are a financial journalist and M&A expert focusing on recent news. Using the following context extracted from M&A news sources, answer the user's question factually and succinctly. Highlight relevant and recent deals, events, or trends mentioned in the context. Do not invent information not provided in the context.
 
+    Context:
     {context}
 
     Question: {question}
+    
+    If you are asked to do a market sheet or a company profile, structure the answer you give me based on the context.
+    Else, provide a clear and fact-based answer drawn from the provided context.
     """
     answer_prompt = ChatPromptTemplate.from_template(answer_template)
     llm = ChatOpenAI(model='o1-mini')
 
-    # Génération de la réponse
+    # Étape 4 : Génération de la réponse
     final_input = {"context": context, "question": question}
     answer = (
         answer_prompt
@@ -369,42 +471,262 @@ def rag_fusion(question: str) -> str:
 
     return answer
 
-# def rag_fusion(question: str) -> str:
-#     try:
-#         # Charger l'index FAISS depuis le répertoire
-#         faiss_index_path = "C:\\Users\\namar\\Documents\\poc_RAG\\Projet_test\\RAG_MnA\\Data\\FAISS_index"
-#         embedding = OpenAIEmbeddings()
-#         vectorstore = FAISS.load_local(
-#             faiss_index_path, 
-#             embeddings=embedding, 
-#             allow_dangerous_deserialization=True
-#         )
+def rag_fusion_fonds(question: str) -> str:
+    # Configurer les clés API
+    os.environ['LANGCHAIN_TRACING_V2'] = 'true'
+    os.environ['LANGCHAIN_ENDPOINT'] = 'https://api.smith.langchain.com'
+    os.environ['LANGCHAIN_TRACING_V2'] = 'true'
+    os.environ['LANGCHAIN_ENDPOINT'] = 'https://api.smith.langchain.com'
+    os.environ['LANGCHAIN_API_KEY'] = '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'
 
+    os.environ['OPENAI_API_KEY'] = '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'
 
-#         print("VectorStore FAISS chargé depuis le disque.")
+    faiss_index_path = "C:\\Users\\namar\\Documents\\poc_RAG\\Projet_test\\RAG_MnA\\Data\\FAISS_index_fonds"
+    embedding = OpenAIEmbeddings()
+    vectorstore = FAISS.load_local(
+            faiss_index_path, 
+            embeddings=embedding, 
+            allow_dangerous_deserialization=True
+        )
 
-#         # Effectuer une recherche de similarité directement
-#         results = vectorstore.similarity_search(question, k=3)
-#         print("Documents récupérés :", results)
+    retriever = vectorstore.as_retriever(
+        search_type="mmr",
+        search_kwargs={
+            "k": 20,
+            "score_threshold": 0.01
+        }
+    )
 
-#         # Si vous souhaitez utiliser un retriever pour unifier votre logique :
-#         retriever = vectorstore.as_retriever(
-#             search_type="mmr",  # Utiliser Maximal Marginal Relevance
-#             search_kwargs={
-#                 "k": 10,  # Récupérer plus de documents
-#                 "score_threshold": 0.01  # Réduire le seuil de score pour inclure plus de résultats
-#             }
-#         )
-#         print("Retriever créé.")
+    # Prompt pour la génération des requêtes (fonds)
+    query_generation_template = """You are an expert in private equity and investment funds. The user has asked a question related to investment funds, their strategies, sectors, geographic focus, or recent deals. Given the user's query:
 
-#         docs = retriever.get_relevant_documents(question)
-#         print("Documents via retriever :", docs)
+    {question}
 
-#         if docs:
-#             return docs[0].page_content
-#         else:
-#             return "Aucun document pertinent trouvé."
-#     except Exception as e:
-#         print(f"Erreur dans rag_fusion: {e}")
-#         return f"Erreur: {str(e)}"
+    Your task is to generate five 
+    different versions of the given user question to retrieve relevant documents from a vector 
+    database. By generating multiple perspectives on the user question, your goal is to help
+    the user overcome some of the limitations of the distance-based similarity search. 
+    Provide these alternative questions separated by newlines.
+        """
+    prompt_rag_fusion = ChatPromptTemplate.from_template(query_generation_template)
+
+    generate_queries = (
+        prompt_rag_fusion
+        | ChatOpenAI(model='o1-mini')
+        | StrOutputParser()
+        | (lambda x: x.split("\n"))
+    )
+
+    queries = generate_queries.invoke({"question": question})
+    print(f"Requêtes générées : {queries}")
+
+    results = [retriever.invoke(q) for q in queries]
+    print(f"Documents récupérés : {results}")
+
+    # Fusion RRF
+    fused_scores = {}
+    for docs in results:
+        for rank, doc in enumerate(docs):
+            doc_dict = {
+                "page_content": doc.page_content,
+                "metadata": doc.metadata
+            }
+            doc_str = dumps(doc_dict)
+            if doc_str not in fused_scores:
+                fused_scores[doc_str] = 0
+            fused_scores[doc_str] += 1 / (rank + 60)
+
+    reranked_docs = [
+        (Document(page_content=d["page_content"], metadata=d["metadata"]), score)
+        for d_str, score in sorted(fused_scores.items(), key=lambda x: x[1], reverse=True)
+        for d in [loads(d_str)]
+    ]
+
+    print(f"Documents fusionnés : {len(reranked_docs)} documents rerankés.")
+
+    context = "\n\n".join([doc.page_content for doc, _ in reranked_docs])
+
+    # Prompt pour la réponse finale (fonds)
+    answer_template = """You are a private equity and investment fund specialist. Using the following context sourced from a database of investment funds, answer the user's question with a focus on fund characteristics such as ticket size, sector preferences, geographic focus, and investment strategies. Provide a factual, clear, and concise explanation based solely on the provided information. Do not invent details not found in the context.
+
+    Context:
+    {context}
+
+    Question: {question}
+
+    Offer a fact-based, to-the-point response, highlighting key investment criteria or fund details.
+    """
+    answer_prompt = ChatPromptTemplate.from_template(answer_template)
+    llm = ChatOpenAI(model='o1-mini')
+
+    final_input = {"context": context, "question": question}
+    answer = (
+        answer_prompt
+        | llm
+        | StrOutputParser()
+    ).invoke(final_input)
+
+    return answer
+
+def rag_fusion_fiche_societe_to_word(question: str) -> dict:
+    """
+    Interroge la base d'actualités M&A via RAG et retourne une réponse structurée
+    adaptée pour remplir un template Word.
     
+    :param question: La question posée par l'utilisateur.
+    :return: Un dictionnaire contenant les informations structurées pour le template Word.
+    """
+    # Configurer les clés API (à sécuriser, par exemple en utilisant des variables d'environnement)
+    os.environ['LANGCHAIN_TRACING_V2'] = 'true'
+    os.environ['LANGCHAIN_ENDPOINT'] = 'https://api.smith.langchain.com'
+    os.environ['LANGCHAIN_TRACING_V2'] = 'true'
+    os.environ['LANGCHAIN_ENDPOINT'] = 'https://api.smith.langchain.com'
+    os.environ['LANGCHAIN_API_KEY'] = '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'
+    os.environ['OPENAI_API_KEY'] = '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'
+
+    
+    # Chemin vers l'index FAISS des actualités
+    faiss_index_path = "C:\\Users\\namar\\Documents\\poc_RAG\\Projet_test\\RAG_MnA\\Data\\FAISS_index_actualites"
+    
+    # Initialiser les embeddings et charger le vectorstore FAISS
+    embedding = OpenAIEmbeddings()
+    vectorstore = FAISS.load_local(
+        faiss_index_path, 
+        embeddings=embedding, 
+        allow_dangerous_deserialization=True
+    )
+
+    # Créer un système de récupération avec Maximal Marginal Relevance (MMR)
+    retriever = vectorstore.as_retriever(
+        search_type="mmr",
+        search_kwargs={
+            "k": 10,  # Nombre de documents à récupérer
+            "score_threshold": 0.01  # Seuil de score pour inclure des résultats
+        }
+    )
+
+    # Prompt pour la génération des requêtes
+    query_generation_template = """You are a knowledgeable M&A news analyst. Your role is to generate multiple targeted search queries to retrieve the most relevant and recent M&A news from a specialized news database.
+
+    Given the user's question: {question}
+
+    Your task is to generate five 
+    different versions of the given user question to retrieve relevant documents from a vector 
+    database. By generating multiple perspectives on the user question, your goal is to help
+    the user overcome some of the limitations of the distance-based similarity search. 
+    Provide these alternative questions separated by newlines.
+    """
+    prompt_rag_fusion = ChatPromptTemplate.from_template(query_generation_template)
+
+    # Générer les requêtes
+    generate_queries = (
+        prompt_rag_fusion
+        | ChatOpenAI(model='o1-mini')
+        | StrOutputParser()
+        | (lambda x: x.split("\n"))
+    )
+
+    # Étape 1 : Générer les requêtes
+    queries = generate_queries.invoke({"question": question})
+    print(f"Requêtes générées : {queries}")
+
+    # Étape 2 : Récupération des documents
+    results = [retriever.invoke(q) for q in queries]
+    print(f"Documents récupérés : {results}")
+
+    # Étape 3 : Fusion Reciprocal Rank Fusion (RRF)
+    fused_scores = {}
+    for docs in results:
+        for rank, doc in enumerate(docs):
+            doc_dict = {
+                "page_content": doc.page_content,
+                "metadata": doc.metadata
+            }
+            doc_str = json.dumps(doc_dict)
+            if doc_str not in fused_scores:
+                fused_scores[doc_str] = 0
+            fused_scores[doc_str] += 1 / (rank + 60)  # Pondération RRF
+
+    reranked_docs = [
+        (Document(page_content=d["page_content"], metadata=d["metadata"]), score)
+        for d_str, score in sorted(fused_scores.items(), key=lambda x: x[1], reverse=True)
+        for d in [json.loads(d_str)]
+    ]
+
+    print(f"Documents fusionnés : {len(reranked_docs)} documents rerankés.")
+
+    # Préparer le contexte pour le modèle LLM
+    context = "\n\n".join([doc.page_content for doc, _ in reranked_docs])
+
+    # Prompt pour la réponse finale structuré en JSON
+    answer_template = """You are a financial journalist and M&A expert. You MUST answer in JSON format only, strictly matching the provided structure.
+
+    Context:
+    {context}
+
+    Question: {question}
+
+    Respond ONLY inside the following structure (do not include any explanations, formatting notes, or extra text outside the brackets). The first character of your answer must be a bracket and the last one too. It's VERY IMPORTANT THAT NOTHING IS OUTSIDE THE BRACKETS. DON'T WRITE '''json at the beginning, start immediately with the company_name !! :
+
+    {{
+        "nom_societe": "Provide the company name if found",
+        "description_activite": "Provide detailed description of the company's activities. Write it like you will present it, it needs to be 5-7 lines long with a good expression.",
+        "chiffres_cles": "Include key metrics such as revenue, employees count, or founding date",
+        "clients_par_secteur": "List the main clients of the company by sector",
+        "implantation_positionnement": "List cities or countries where the company is located",
+        "elements_financiers": "Describe the financial growth over the past 3 years",
+        "president": "Name of the president",
+        "daf": "Name of the financial director",
+        "actionnaire": "List shareholders or investment funds associated with the company",
+        "actionnaire_pourcentage": "Shareholder distribution percentages if available or majority/minority if available",
+        "creanciers_type": "Type of creditors",
+        "creanciers_commentaires": "Comments about the creditors",
+        "actualites_presse": "Summarize company-related news with dates. Give as much détails as you can. Present and order it for your client !",
+        "equity_story": "Provide details of investments or equity-related events. Give as much détails as you can. Present and order it for your client !",
+        "creation": "Provide creation details or year of founding",
+        "acquisition": "Present acquisition details, with dates and company names. Give as much details as you can. Present and order it for your client !"
+    }}
+
+    DO NOT include any additional text before or after."""
+    answer_prompt = ChatPromptTemplate.from_template(answer_template)
+    llm = ChatOpenAI(model='o1-mini')  # Utilisez le modèle approprié
+
+    # Étape 4 : Génération de la réponse structurée
+    final_input = {"context": context, "question": question}
+    answer = (
+        answer_prompt
+        | llm
+        | StrOutputParser()
+    ).invoke(final_input)
+
+    try:
+        print("Réponse du LLM:", answer)
+        # Convertir la réponse JSON en dictionnaire
+        answer_dict = json.loads(answer)
+    except json.JSONDecodeError:
+        # Gérer les erreurs de parsing JSON
+        answer_dict = {}
+        print("Erreur lors du parsing JSON de la réponse du LLM.")
+
+    return answer_dict
+
+from docxtpl import DocxTemplate
+import datetime
+import os
+
+def generate_fiche_societe(llm_response: dict, template_path: str, output_path: str):
+    """
+    Remplit un template Word avec les données de la réponse du LLM.
+
+    :param llm_response: dict contenant les informations de la fiche société
+    :param template_path: chemin vers le template Word
+    :param output_path: chemin où le document rempli sera sauvegardé
+    """
+    doc = DocxTemplate(template_path)
+    
+    # Ajouter la date actuelle si elle n'est pas fournie
+    if 'date' not in llm_response or not llm_response['date']:
+        llm_response['date'] = datetime.datetime.now().strftime("%Y-%m-%d")
+    
+    doc.render(llm_response)
+    doc.save(output_path)

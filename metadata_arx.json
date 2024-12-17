@@ -23,6 +23,14 @@
         "source": "C:\\Users\\namar\\Documents\\poc_RAG\\Projet_test\\RAG_M-A\\Data\\exported_results.csv",
         "last_modified": "2024-11-23",
         "tags": ["conseil", "M&A", "fonds d'investissements"]
+      },
+      {
+      "file_name": "pe_firms_cleaned.csv",
+      "type": "CSV",
+      "description": "Liste des fonds d'investissements avec les informations de base comme les secteurs, les tickets (combien ils investissent en moyenne) pour chacune de leurs branches...",
+      "source": "C:\\Users\\namar\\Documents\\poc_RAG\\Projet_test\\RAG_M-A\\Data\\pe_firms_cleaned.csv",
+      "last_modified": "2024-12-16",
+      "tags": ["fonds d'investissements", "secteurs", "tickets"]
       }
     ]
   }
