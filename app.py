@@ -1,5 +1,5 @@
 import streamlit as st
-from poc_RAG import rag_fusion, rag_fusion_actualites, rag_fusion_fonds, rag_fusion_fiche_societe_to_word, generate_fiche_societe  # Importer votre fonction rag_fusion
+from poc_RAG import rag_fusion, rag_fusion_actualites, rag_fusion_fonds, rag_fusion_fiche_societe_to_word, generate_fiche_societe, rag_fusion_multiples_transactions_comparables  # Importer votre fonction rag_fusion
 from langchain.document_loaders import WebBaseLoader  
 import os  
 
@@ -30,7 +30,7 @@ st.write("**Simplifiez votre analyse de marché et vos recherches grâce à notr
 # ===============================
 menu = st.sidebar.radio(
     "Navigation",
-    options=["Accueil", "Données complètes (Actu+Entreprises+Fonds)", "Actualités", "Fonds", "Analyse avancée"]
+    options=["Accueil", "Données complètes (Actu+Entreprises+Fonds)", "Actualités", "Fonds", "Transactions comparables", "Analyse avancée"]
 )
 
 # ===============================
@@ -146,6 +146,27 @@ elif menu == "Fonds":
             st.success(answer)
         except Exception as e:
             st.error(f"Une erreur est survenue lors de la génération de la réponse : {e}")
+
+elif menu == "Transactions comparables":
+    st.header("Interroger la base de données sur les transactions comparables et les multiples")
+    st.write(
+        """
+        Posez une question ici, l'IA interrogera uniquement la base dédiée aux transactions comparables 
+        et aux multiples financiers (e.g., EV/Revenue, EV/EBITDA, EV/EBIT). 
+        Obtenez des informations pertinentes sur des transactions similaires, leurs caractéristiques et leurs multiples.
+        """
+    )
+    
+    question = st.text_input("Posez votre question (Transactions comparables) :", "")
+    if question:
+        try:
+            # Appeler la fonction rag_fusion_multiples_transactions_comparables
+            answer = rag_fusion_multiples_transactions_comparables(question)
+            st.write("Réponse générée par l'IA :")
+            st.success(answer)
+        except Exception as e:
+            st.error(f"Une erreur est survenue lors de la génération de la réponse : {e}")
+
 
 elif menu == "Analyse avancée":
     st.header("Analyse avancée 🔍")

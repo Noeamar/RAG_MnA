@@ -1,17 +1,17 @@
 {
     "documents": [
       {
-        "file_name": "scraped_companies_reorganized.csv",
+        "file_name": "scraped_companies_reorganized_Arx.csv",
         "type": "CSV",
-        "description": "Liste des entreprises avec les informations de base comme le CA, les secteurs, etc.",
+        "description": "Liste des entreprises avec les informations de base comme le CA, les secteurs, etc. Ces informations viennent de Arx.",
         "source": "C:\\Users\\namar\\Documents\\poc_RAG\\Projet_test\\RAG_M-A\\Data\\scraped_companies_reorganized.csv",
         "last_modified": "2024-11-20",
         "tags": ["entreprises", "secteurs", "CA"]
       },
       {
-        "file_name": "scraped_news_grid.csv",
+        "file_name": "scraped_news_grid_Arx.csv",
         "type": "CSV",
-        "description": "Collection d'articles et de nouvelles liées aux entreprises analysées et au marché de la finance d'entreprise.",
+        "description": "Collection d'articles et de nouvelles liées aux entreprises analysées et au marché de la finance d'entreprise. Ces informations viennent de Arx.",
         "source": "C:\\Users\\namar\\Documents\\poc_RAG\\Projet_test\\RAG_M-A\\Data\\scraped_news_grid.csv",
         "last_modified": "2024-11-22",
         "tags": ["nouvelles", "entreprises", "actualités", "opérations"]
@@ -19,18 +19,34 @@
       {
         "file_name": "exported_results.csv",
         "type": "CSV",
-        "description": "Liste des cabinets de conseils, leurs compétences et leur structure.",
+        "description": "Liste des cabinets de conseils, leurs compétences et leur structure. Ces informations viennent de Arx.",
         "source": "C:\\Users\\namar\\Documents\\poc_RAG\\Projet_test\\RAG_M-A\\Data\\exported_results.csv",
         "last_modified": "2024-11-23",
         "tags": ["conseil", "M&A", "fonds d'investissements"]
       },
       {
-      "file_name": "pe_firms_cleaned.csv",
+      "file_name": "pe_firms_combined_Arx.csv",
       "type": "CSV",
-      "description": "Liste des fonds d'investissements avec les informations de base comme les secteurs, les tickets (combien ils investissent en moyenne) pour chacune de leurs branches...",
+      "description": "Liste des fonds d'investissements avec les informations de base comme les secteurs, les tickets (combien ils investissent en moyenne) pour chacune de leurs branches... Ces informations viennent de Arx.",
       "source": "C:\\Users\\namar\\Documents\\poc_RAG\\Projet_test\\RAG_M-A\\Data\\pe_firms_cleaned.csv",
       "last_modified": "2024-12-16",
       "tags": ["fonds d'investissements", "secteurs", "tickets"]
+      },
+      {
+      "file_name": "deals_data_cleaned_CFNews.csv",
+      "type": "CSV",
+      "description": "Collection d'articles et de nouvelles liées aux entreprises analysées et au marché de la finance d'entreprise. Ces informations viennet de CFNews.",
+      "source": "C:\\Users\\namar\\Documents\\poc_RAG\\Projet_test\\RAG_M-A\\Data\\pe_firms_cleaned.csv",
+      "last_modified": "2025-01-07",
+      "tags": ["nouvelles", "entreprises", "actualités", "opérations", "fusion", "acquisitions"]
+      },
+      {
+      "file_name": "deals_MergerMarket.csv",
+      "type": "CSV",
+      "description": "Collection de transactions liées aux entreprises analysées et au marché de la finance d'entreprise. Ces informations viennent de MergerMarket. On y retrouve des multiples de transactions",
+      "source": "C:\\Users\\namar\\Documents\\poc_RAG\\Projet_test\\RAG_M-A\\Data\\pe_firms_cleaned.csv",
+      "last_modified": "2025-01-07",
+      "tags": ["nouvelles", "entreprises", "multiples", "opérations", "fusion", "acquisitions"]
       }
     ]
   }
