@@ -7,7 +7,6 @@
 import bs4
 from langchain import hub
 from langchain.text_splitter import RecursiveCharacterTextSplitter
-from langchain_community.vectorstores import Chroma
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.runnables import RunnablePassthrough
 from langchain_openai import ChatOpenAI, OpenAIEmbeddings
@@ -180,85 +179,85 @@ openai_api_key = os.getenv("OPENAI_API_KEY")
 # In[ ]:
 
 
-def rag_query(question):
-        # Placez tout votre code ici
-        # Multi Query: Different Perspectives
-    os.environ['LANGCHAIN_TRACING_V2'] = 'true'
-    os.environ['LANGCHAIN_ENDPOINT'] = 'https://api.smith.langchain.com'
-    os.environ['LANGCHAIN_API_KEY'] = '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'
+# def rag_query(question):
+#         # Placez tout votre code ici
+#         # Multi Query: Different Perspectives
+#     os.environ['LANGCHAIN_TRACING_V2'] = 'true'
+#     os.environ['LANGCHAIN_ENDPOINT'] = 'https://api.smith.langchain.com'
+#     os.environ['LANGCHAIN_API_KEY'] = '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'
 
-    os.environ['OPENAI_API_KEY'] = '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'
+#     os.environ['OPENAI_API_KEY'] = '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'
 
-    # Recharger le vectorstore depuis le répertoire persist_directory
-    vectorstore = Chroma(
-        persist_directory="C:\\Users\\namar\\Documents\\poc_RAG\\Projet_test\\RAG_M-A\\Data\\ChromaDB",
-        embedding_function=OpenAIEmbeddings()
-    )
+#     # Recharger le vectorstore depuis le répertoire persist_directory
+#     vectorstore = Chroma(
+#         persist_directory="C:\\Users\\namar\\Documents\\poc_RAG\\Projet_test\\RAG_M-A\\Data\\ChromaDB",
+#         embedding_function=OpenAIEmbeddings()
+#     )
 
-    print("VectorStore chargé depuis le disque.")
-
-
-    # Créer un système de récupération
-    retriever = vectorstore.as_retriever(
-        search_type="mmr",  # Utiliser Maximal Marginal Relevance
-        search_kwargs={
-            "k": 10,  # Récupérer plus de documents
-            "score_threshold": 0.01  # Réduire le seuil de score pour inclure plus de résultats
-        }
-    )
-
-    template = """You are an AI language model assistant. Your task is to generate ten 
-    different versions of the given user question to retrieve relevant documents from a vector 
-    database. By generating multiple perspectives on the user question, your goal is to help
-    the user overcome some of the limitations of the distance-based similarity search. 
-    Provide these alternative questions separated by newlines. Original question: {question}"""
-    prompt_perspectives = ChatPromptTemplate.from_template(template)
+#     print("VectorStore chargé depuis le disque.")
 
 
-    generate_queries = (
-        prompt_perspectives 
-        | ChatOpenAI(model= 'o1-mini') 
-        | StrOutputParser() 
-        | (lambda x: x.split("\n"))
-    )
+#     # Créer un système de récupération
+#     retriever = vectorstore.as_retriever(
+#         search_type="mmr",  # Utiliser Maximal Marginal Relevance
+#         search_kwargs={
+#             "k": 10,  # Récupérer plus de documents
+#             "score_threshold": 0.01  # Réduire le seuil de score pour inclure plus de résultats
+#         }
+#     )
 
-    def get_unique_union(documents: list[list]):
-        """ Unique union of retrieved docs """
-        # Flatten list of lists, and convert each Document to string
-        flattened_docs = [dumps(doc) for sublist in documents for doc in sublist]
-        # Get unique documents
-        unique_docs = list(set(flattened_docs))
-        # Return
-        return [loads(doc) for doc in unique_docs]
+#     template = """You are an AI language model assistant. Your task is to generate ten 
+#     different versions of the given user question to retrieve relevant documents from a vector 
+#     database. By generating multiple perspectives on the user question, your goal is to help
+#     the user overcome some of the limitations of the distance-based similarity search. 
+#     Provide these alternative questions separated by newlines. Original question: {question}"""
+#     prompt_perspectives = ChatPromptTemplate.from_template(template)
+
+
+#     generate_queries = (
+#         prompt_perspectives 
+#         | ChatOpenAI(model= 'o1-mini') 
+#         | StrOutputParser() 
+#         | (lambda x: x.split("\n"))
+#     )
+
+#     def get_unique_union(documents: list[list]):
+#         """ Unique union of retrieved docs """
+#         # Flatten list of lists, and convert each Document to string
+#         flattened_docs = [dumps(doc) for sublist in documents for doc in sublist]
+#         # Get unique documents
+#         unique_docs = list(set(flattened_docs))
+#         # Return
+#         return [loads(doc) for doc in unique_docs]
     
-    # Retrieve
-    question = "Quelles nouveautées pour Vulcain ingénierie ?"
-    retrieval_chain = generate_queries | retriever.map() | get_unique_union
-    docs = retrieval_chain.invoke({"question":question})
+#     # Retrieve
+#     question = "Quelles nouveautées pour Vulcain ingénierie ?"
+#     retrieval_chain = generate_queries | retriever.map() | get_unique_union
+#     docs = retrieval_chain.invoke({"question":question})
 
-    # RAG
-    template = """Tu es un assistant chatbot qui travaille dans un cabinet de finance d'entreprise. Ton rôle est de donner les informations les plus pertinentes possibles en te basant sur les sources que tu as. Voici le contexte pour t'aider:
+#     # RAG
+#     template = """Tu es un assistant chatbot qui travaille dans un cabinet de finance d'entreprise. Ton rôle est de donner les informations les plus pertinentes possibles en te basant sur les sources que tu as. Voici le contexte pour t'aider:
 
-    {context}
+#     {context}
 
-    Question: {question}
-    """
+#     Question: {question}
+#     """
 
-    prompt = ChatPromptTemplate.from_template(template)
+#     prompt = ChatPromptTemplate.from_template(template)
 
-    llm = ChatOpenAI(model='o1-mini')
+#     llm = ChatOpenAI(model='o1-mini')
 
-    final_rag_chain = (
-        {"context": retrieval_chain, 
-        "question": itemgetter("question")} 
-        | prompt
-        | llm
-        | StrOutputParser()
-    )
+#     final_rag_chain = (
+#         {"context": retrieval_chain, 
+#         "question": itemgetter("question")} 
+#         | prompt
+#         | llm
+#         | StrOutputParser()
+#     )
 
-    final_rag_chain.invoke({"question":question})
-    answer = final_rag_chain.invoke({"question": question, "context": docs})
-    return answer
+#     final_rag_chain.invoke({"question":question})
+#     answer = final_rag_chain.invoke({"question": question, "context": docs})
+#     return answer
 
 
 # ### RAG FUSION
@@ -270,7 +269,6 @@ from langchain.prompts import ChatPromptTemplate
 from langchain_openai import ChatOpenAI
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.runnables import RunnablePassthrough
-from langchain_chroma import Chroma
 from json import dumps, loads
 from langchain.schema import Document
 from langchain.vectorstores import FAISS
