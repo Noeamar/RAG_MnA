@@ -6,6 +6,8 @@ from poc_RAG import (
 from langchain.document_loaders import WebBaseLoader
 import os
 import pandas as pd
+import io
+import zipfile
 
 # ===============================
 # Main Configuration
@@ -140,24 +142,30 @@ if st.session_state["registered"] and st.session_state["ready_to_access"]:
     
     elif menu == "Watermark PDF":
         st.header("Add Watermark to PDF")
-        st.write("Upload a PDF and add bank names. For each bank name, the watermark will be formatted as 'Confidentiel - <Bank Name>' (with an space after the hyphen).")
+        st.write("Upload a PDF and add bank names. For each bank name, the watermark will be formatted as 'Confidentiel - <Bank Name>' (with an espace after the hyphen).")
+        
         uploaded_pdf = st.file_uploader("Upload a PDF", type=["pdf"], key="uploaded_pdf")
         if uploaded_pdf is not None:
             pdf_bytes = uploaded_pdf.read()
             st.write(f"Uploaded file: {uploaded_pdf.name} ({len(pdf_bytes)} bytes)")
-            # Zone de texte pour saisir un nom de banque, qui se vide après l'ajout
-            bank_name = st.text_input("Enter a bank name (e.g., CIC, BNP):", key="bank_name_input")
+            
+            # Créez un conteneur pour la zone de texte afin de pouvoir la réinitialiser
+            bank_input_container = st.empty()
+            bank_name = bank_input_container.text_input("Enter a bank name (e.g., CIC, BNP):", key="bank_name_input")
+            
+            # Bouton pour ajouter le nom à la liste
             if st.button("Add Bank Name"):
                 if bank_name:
                     if "bank_names" not in st.session_state:
                         st.session_state.bank_names = []
-                    # Ajouter le nom et vider la zone de texte en réinitialisant la clé
                     st.session_state.bank_names.append(bank_name.strip())
-                    st.session_state.bank_name_input = ""  # Effacer le contenu du champ
                     st.success(f"Bank name '{bank_name.strip()}' added.")
+                    # Réinitialiser le champ de saisie en recréant le widget dans le conteneur
+                    bank_input_container.text_input("Enter a bank name (e.g., CIC, BNP):", key="bank_name_input", value="")
                 else:
                     st.error("Please enter a bank name.")
-            # Afficher la liste des noms ajoutés de manière plus jolie (liste à puces)
+            
+            # Afficher la liste des noms ajoutés sous forme de liste à puces
             if "bank_names" in st.session_state and st.session_state.bank_names:
                 st.markdown("**Bank names added:**")
                 for name in st.session_state.bank_names:
@@ -179,7 +187,7 @@ if st.session_state["registered"] and st.session_state["ready_to_access"]:
                 else:
                     st.error("Please add at least one bank name before generating PDFs.")
             
-            # Un seul bouton pour télécharger tous les PDFs dans une archive ZIP
+            # Bouton unique pour télécharger tous les PDFs filigranés dans une archive ZIP
             if "watermarked_pdfs" in st.session_state and st.session_state.watermarked_pdfs:
                 if st.button("Download All Watermarked PDFs"):
                     with st.spinner("Creating ZIP archive..."):
