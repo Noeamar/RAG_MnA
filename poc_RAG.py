@@ -431,23 +431,48 @@ Your response should be factual, concise, and focused solely on the provided con
     print("[LOG] Réponse multiples transactions générée.")
     return answer
 
+
 import io
 from PyPDF2 import PdfReader, PdfWriter
 from reportlab.pdfgen import canvas
-from reportlab.lib.pagesizes import letter
+from reportlab.lib.pagesizes import letter, landscape
 from reportlab.pdfbase import pdfmetrics
+
+def wrap_text(text, font_name, font_size, max_width):
+    """
+    Découpe le texte en lignes sans couper de mot, en respectant une largeur maximale.
+    """
+    words = text.split()
+    lines = []
+    current_line = ""
+    for word in words:
+        if current_line == "":
+            new_line = word
+        else:
+            new_line = current_line + " " + word
+        # Si la largeur de la nouvelle ligne est inférieure ou égale à max_width, on l'ajoute
+        if pdfmetrics.stringWidth(new_line, font_name, font_size) <= max_width:
+            current_line = new_line
+        else:
+            if current_line:
+                lines.append(current_line)
+            current_line = word
+    if current_line:
+        lines.append(current_line)
+    return lines
 
 def add_watermark_to_pdf(input_pdf_bytes: bytes, bank_name: str) -> bytes:
     """
     Ajoute un filigrane au PDF contenu dans input_pdf_bytes.
     Le filigrane aura la forme "Confidentiel - <bank_name>" (avec un espace après le tiret),
-    centré en fonction des dimensions de la première page du PDF.
+    et sera automatiquement mis en forme pour aller à la ligne si nécessaire, sans couper de mot,
+    puis centré en fonction des dimensions de la première page du PDF.
     Retourne le PDF filigrané sous forme d'octets.
     """
-    # Construire le texte complet du filigrane
+    # Texte complet du filigrane
     watermark_text = f"Confidentiel - {bank_name.strip()}"
     
-    # Lire le PDF d'entrée pour obtenir ses dimensions (à partir de la première page)
+    # Lecture du PDF d'entrée pour obtenir les dimensions de la première page
     input_pdf_stream = io.BytesIO(input_pdf_bytes)
     reader = PdfReader(input_pdf_stream)
     if len(reader.pages) == 0:
@@ -456,27 +481,47 @@ def add_watermark_to_pdf(input_pdf_bytes: bytes, bank_name: str) -> bytes:
     page_width = float(first_page.mediabox.width)
     page_height = float(first_page.mediabox.height)
     
-    # Créer un PDF de filigrane avec ReportLab de la même taille que la page
+    # On définit le canvas en mode paysage (si le PDF est en format paysage, sinon, on utilise les dimensions de la page)
+    # Ici, on utilisera les dimensions de la première page telles quelles.
     packet = io.BytesIO()
     can = canvas.Canvas(packet, pagesize=(page_width, page_height))
     
+    # Définir la police et la taille
+    font_name = "Helvetica"
+    font_size = 40
+    can.setFont(font_name, font_size)
+    
+    # Définir la largeur maximale pour le texte (80% de la largeur de la page)
+    max_width = page_width * 0.8
+    
+    # Découper le texte en lignes si nécessaire
+    lines = wrap_text(watermark_text, font_name, font_size, max_width)
+    num_lines = len(lines)
+    line_height = font_size * 1.2  # Espace entre les lignes
+    # Calculer le décalage vertical pour centrer le bloc de texte
+    total_text_height = num_lines * line_height
+    start_y = total_text_height / 2 - line_height/2  # Ajustement pour centrer verticalement
+    
     # Déplacer l'origine au centre de la page
-    can.translate(page_width / 2, page_height / 2)
+    can.translate(page_width/2, page_height/2)
     # Appliquer une rotation de 45°
     can.rotate(45)
     can.setFillColorRGB(0, 0, 0, alpha=0.15)
-    can.setFont("Helvetica", 50)
-    # Calculer la largeur du texte pour le centrer horizontalement
-    text_width = pdfmetrics.stringWidth(watermark_text, "Helvetica", 50)
-    # Dessiner le texte centré (ajustez l'offset vertical si besoin)
-    can.drawString(-text_width / 2, -25, watermark_text)
+    
+    # Dessiner chaque ligne de texte centrée
+    for i, line in enumerate(lines):
+        line_width = pdfmetrics.stringWidth(line, font_name, font_size)
+        x = -line_width / 2  # Centrage horizontal
+        y = start_y - i * line_height
+        can.drawString(x, y, line)
+    
     can.save()
     
     packet.seek(0)
     watermark_pdf = PdfReader(packet)
     watermark_page = watermark_pdf.pages[0]
     
-    # Créer un PdfWriter pour générer le PDF final
+    # Fusionner le filigrane sur chaque page
     writer = PdfWriter()
     for page in reader.pages:
         page.merge_page(watermark_page)
