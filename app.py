@@ -1,7 +1,6 @@
 import streamlit as st
 from poc_RAG import (
     rag_fusion, rag_fusion_actualites, rag_fusion_fonds,
-    rag_fusion_fiche_societe_to_word, generate_fiche_societe,
     rag_fusion_multiples_transactions_comparables, add_watermark_to_pdf
 )
 from langchain.document_loaders import WebBaseLoader
