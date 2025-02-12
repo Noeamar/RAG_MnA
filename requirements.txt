@@ -183,3 +183,5 @@ wrapt==1.17.0
 wsproto==1.2.0
 yarl==1.18.3
 zipp==3.21.0
+gcsfs==2023.3.0
+st-files-connection

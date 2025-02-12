@@ -142,7 +142,7 @@ if st.session_state["registered"] and st.session_state["ready_to_access"]:
     
     elif menu == "Watermark PDF":
         st.header("Add Watermark to PDF")
-        st.write("Upload a PDF and add bank names. For each bank name, the watermark will be formatted as 'Confidentiel - <Bank Name>' (with a space after the hyphen).")
+        st.write("Upload a PDF and add bank names. For each bank name, the watermark will be formatted as 'Confidentiel - Bank Name'.")
         
         uploaded_pdf = st.file_uploader("Upload a PDF", type=["pdf"], key="uploaded_pdf")
         if uploaded_pdf is not None:
