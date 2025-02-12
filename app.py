@@ -149,7 +149,7 @@ if st.session_state["registered"] and st.session_state["ready_to_access"]:
             pdf_bytes = uploaded_pdf.read()
             st.write(f"Uploaded file: {uploaded_pdf.name} ({len(pdf_bytes)} bytes)")
             
-            # Créez un conteneur pour la zone de texte afin de pouvoir la réinitialiser
+            # Créez un conteneur pour la zone de texte (nous n'effaçons plus le contenu automatiquement)
             bank_input_container = st.empty()
             bank_name = bank_input_container.text_input("Enter a bank name (e.g., CIC, BNP):", key="bank_name_input")
             
@@ -160,8 +160,7 @@ if st.session_state["registered"] and st.session_state["ready_to_access"]:
                         st.session_state.bank_names = []
                     st.session_state.bank_names.append(bank_name.strip())
                     st.success(f"Bank name '{bank_name.strip()}' added.")
-                    # Réinitialiser le champ de saisie en recréant le widget dans le conteneur
-                    bank_input_container.text_input("Enter a bank name (e.g., CIC, BNP):", key="bank_name_input", value="")
+                    # Note : Le champ de saisie n'est plus réinitialisé automatiquement.
                 else:
                     st.error("Please enter a bank name.")
             
