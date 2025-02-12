@@ -38,22 +38,22 @@ os.environ['OPENAI_API_KEY'] = openai_api_key
 GCS_BUCKET = "rag-mna_cloudbuild"
 
 
-# --- Fonction de téléchargement depuis GCS ---
 def download_file_from_gcs(bucket_name: str, source_blob_name: str, destination_file_name: str):
     """
     Télécharge un fichier depuis un bucket Google Cloud Storage vers un chemin local.
     """
-    print(f"[LOG] Initialisation du client GCS pour télécharger {source_blob_name}...")
-    client = storage.Client()  # Utilise GOOGLE_APPLICATION_CREDENTIALS
+    print(f"[LOG] Initialisation du client GCS pour télécharger {source_blob_name}...", flush=True)
+    client = storage.Client()  # Utilise les credentials configurés via GOOGLE_APPLICATION_CREDENTIALS
     bucket = client.bucket(bucket_name)
     blob = bucket.blob(source_blob_name)
     
-    # Crée le dossier de destination s'il n'existe pas
     os.makedirs(os.path.dirname(destination_file_name), exist_ok=True)
-    
-    print(f"[LOG] Téléchargement de gs://{bucket_name}/{source_blob_name} vers {destination_file_name}...")
+    print(f"[LOG] Téléchargement de gs://{bucket_name}/{source_blob_name} vers {destination_file_name}...", flush=True)
     blob.download_to_filename(destination_file_name)
-    print("[LOG] Téléchargement terminé.")
+    
+    # Définir les permissions pour que le fichier soit lisible
+    os.chmod(destination_file_name, 0o644)
+    print("[LOG] Téléchargement terminé et permissions définies.", flush=True)
 
 
 # --- Fonction RAG Fusion (Comprehensive Data: News+Companies+Funds) ---
