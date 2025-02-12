@@ -142,14 +142,14 @@ if st.session_state["registered"] and st.session_state["ready_to_access"]:
     
     elif menu == "Watermark PDF":
         st.header("Add Watermark to PDF")
-        st.write("Upload a PDF and add bank names. For each bank name, the watermark will be formatted as 'Confidentiel - <Bank Name>' (with an espace after the hyphen).")
+        st.write("Upload a PDF and add bank names. For each bank name, the watermark will be formatted as 'Confidentiel - <Bank Name>' (with a space after the hyphen).")
         
         uploaded_pdf = st.file_uploader("Upload a PDF", type=["pdf"], key="uploaded_pdf")
         if uploaded_pdf is not None:
             pdf_bytes = uploaded_pdf.read()
             st.write(f"Uploaded file: {uploaded_pdf.name} ({len(pdf_bytes)} bytes)")
             
-            # Créez un conteneur pour la zone de texte (nous n'effaçons plus le contenu automatiquement)
+            # Zone de saisie pour entrer un nom de banque
             bank_input_container = st.empty()
             bank_name = bank_input_container.text_input("Enter a bank name (e.g., CIC, BNP):", key="bank_name_input")
             
@@ -160,11 +160,11 @@ if st.session_state["registered"] and st.session_state["ready_to_access"]:
                         st.session_state.bank_names = []
                     st.session_state.bank_names.append(bank_name.strip())
                     st.success(f"Bank name '{bank_name.strip()}' added.")
-                    # Note : Le champ de saisie n'est plus réinitialisé automatiquement.
+                    # Ici, on ne vide plus automatiquement la zone de saisie
                 else:
                     st.error("Please enter a bank name.")
             
-            # Afficher la liste des noms ajoutés sous forme de liste à puces
+            # Affichage de la liste des noms ajoutés sous forme de liste à puces
             if "bank_names" in st.session_state and st.session_state.bank_names:
                 st.markdown("**Bank names added:**")
                 for name in st.session_state.bank_names:
@@ -175,32 +175,30 @@ if st.session_state["registered"] and st.session_state["ready_to_access"]:
                 if "bank_names" in st.session_state and st.session_state.bank_names:
                     with st.spinner("Generating watermarked PDFs..."):
                         try:
-                            # Initialiser la liste des PDF filigranés
-                            st.session_state.watermarked_pdfs = []
+                            st.session_state.watermarked_pdfs = []  # Réinitialiser la liste
                             for bank in st.session_state.bank_names:
                                 watermarked_pdf_bytes = add_watermark_to_pdf(pdf_bytes, bank)
                                 st.session_state.watermarked_pdfs.append((bank, watermarked_pdf_bytes))
                             st.success("Watermarked PDFs generated successfully!")
-                        except Exception as e:
-                            st.error(f"An error occurred while generating the watermarked PDFs: {e}")
-                else:
-                    st.error("Please add at least one bank name before generating PDFs.")
-            
-            # Bouton unique pour télécharger tous les PDFs filigranés dans une archive ZIP
-            if "watermarked_pdfs" in st.session_state and st.session_state.watermarked_pdfs:
-                if st.button("Download All Watermarked PDFs"):
-                    with st.spinner("Creating ZIP archive..."):
-                        try:
+                            
+                            # Créer une archive ZIP contenant tous les PDFs générés
                             zip_buffer = io.BytesIO()
                             with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zip_file:
                                 for i, (bank, pdf_data) in enumerate(st.session_state.watermarked_pdfs):
                                     zip_file.writestr(f"watermarked_{bank}_{i+1}.pdf", pdf_data)
                             zip_buffer.seek(0)
-                            st.download_button(
-                                label="Download All Watermarked PDFs",
-                                data=zip_buffer,
-                                file_name="watermarked_pdfs.zip",
-                                mime="application/zip"
-                            )
+                            st.session_state.zip_archive = zip_buffer.getvalue()
                         except Exception as e:
-                            st.error(f"An error occurred while creating the ZIP archive: {e}")
+                            st.error(f"An error occurred while generating the watermarked PDFs: {e}")
+                else:
+                    st.error("Please add at least one bank name before generating PDFs.")
+            
+            # Un seul bouton pour télécharger l'archive ZIP contenant tous les PDFs générés
+            if "zip_archive" in st.session_state:
+                st.download_button(
+                    label="Download All Watermarked PDFs",
+                    data=st.session_state.zip_archive,
+                    file_name="watermarked_pdfs.zip",
+                    mime="application/zip"
+                )
+
