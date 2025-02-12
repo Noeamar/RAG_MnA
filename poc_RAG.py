@@ -6,9 +6,10 @@ import json
 from json import dumps, loads
 from operator import itemgetter
 import datetime
-
-import bs4
 import pandas as pd
+import bs4
+
+# Importations de LangChain et autres
 from langchain import hub
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain_core.output_parsers import StrOutputParser
@@ -27,9 +28,13 @@ from google.cloud import storage
 os.environ['LANGCHAIN_TRACING_V2'] = 'true'
 os.environ['LANGCHAIN_ENDPOINT'] = 'https://api.smith.langchain.com'
 os.environ['LANGCHAIN_API_KEY'] = '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'
-os.environ['OPENAI_API_KEY'] = os.getenv('OPENAI_API_KEY')
+# On récupère la clé OPENAI_API_KEY depuis l'environnement (définie via les secrets sur Streamlit Cloud par exemple)
+openai_api_key = os.getenv('OPENAI_API_KEY')
+if openai_api_key is None:
+    raise ValueError("La variable d'environnement OPENAI_API_KEY n'est pas définie. Veuillez la définir dans vos secrets.")
+os.environ['OPENAI_API_KEY'] = openai_api_key
 
-# Nom du bucket GCS (assurez-vous qu'il est public ou que les credentials sont correctement configurés)
+# Nom du bucket GCS (vérifiez que vos credentials sont configurés)
 GCS_BUCKET = "rag-mna_cloudbuild"
 
 
@@ -38,28 +43,35 @@ def download_file_from_gcs(bucket_name: str, source_blob_name: str, destination_
     """
     Télécharge un fichier depuis un bucket Google Cloud Storage vers un chemin local.
     """
-    client = storage.Client()  # S'appuie sur GOOGLE_APPLICATION_CREDENTIALS si configuré
+    print(f"[LOG] Initialisation du client GCS pour télécharger {source_blob_name}...")
+    client = storage.Client()  # Utilise GOOGLE_APPLICATION_CREDENTIALS
     bucket = client.bucket(bucket_name)
     blob = bucket.blob(source_blob_name)
     
-    # Créer le dossier de destination s'il n'existe pas
+    # Crée le dossier de destination s'il n'existe pas
     os.makedirs(os.path.dirname(destination_file_name), exist_ok=True)
     
-    print(f"Téléchargement de gs://{bucket_name}/{source_blob_name} vers {destination_file_name}...")
+    print(f"[LOG] Téléchargement de gs://{bucket_name}/{source_blob_name} vers {destination_file_name}...")
     blob.download_to_filename(destination_file_name)
-    print("Téléchargement terminé.")
+    print("[LOG] Téléchargement terminé.")
 
 
-# --- Fonction RAG Fusion ---
+# --- Fonction RAG Fusion (Comprehensive Data: News+Companies+Funds) ---
 def rag_fusion(question: str) -> str:
-    # Téléchargement de l'index FAISS pour la base complète
-    local_index_path = "./data/FAISS_index"
+    print("[LOG] Démarrage de rag_fusion pour la question :", question)
+    # On définit le répertoire local qui contient l'index.
+    local_index_dir = "./data/FAISS_index"
+    local_index_file = os.path.join(local_index_dir, "index.faiss")
     gcs_blob_path = "FAISS_index/index.faiss"
-    if not os.path.exists(local_index_path):
-        download_file_from_gcs(GCS_BUCKET, gcs_blob_path, local_index_path)
+    if not os.path.exists(local_index_file):
+        download_file_from_gcs(GCS_BUCKET, gcs_blob_path, local_index_file)
+    else:
+        print(f"[LOG] Fichier index déjà présent localement : {local_index_file}")
     
     embedding = OpenAIEmbeddings()
-    vectorstore = FAISS.load_local(local_index_path, embeddings=embedding, allow_dangerous_deserialization=True)
+    # FAISS.load_local attend le répertoire contenant le fichier "index.faiss"
+    vectorstore = FAISS.load_local(local_index_dir, embeddings=embedding, allow_dangerous_deserialization=True)
+    print("[LOG] Index FAISS chargé.")
     retriever = vectorstore.as_retriever(search_type="mmr", search_kwargs={"k": 10, "score_threshold": 0.01})
     
     query_generation_template = """You are a seasoned M&A consultant with access to a broad dataset that includes recent news, company profiles, and investment fund details. Given the user's question:
@@ -71,17 +83,16 @@ Generate exactly 4 focused queries that will help retrieve the most relevant and
 Output 4 queries:
 """
     prompt_rag_fusion = ChatPromptTemplate.from_template(query_generation_template)
-    generate_queries = (prompt_rag_fusion 
-                        | ChatOpenAI(model='o1-mini') 
-                        | StrOutputParser() 
+    generate_queries = (prompt_rag_fusion
+                        | ChatOpenAI(model='o1-mini')
+                        | StrOutputParser()
                         | (lambda x: x.split("\n")))
     queries = generate_queries.invoke({"question": question})
-    print(f"Requêtes générées : {queries}")
+    print("[LOG] Requêtes générées :", queries)
     
     results = [retriever.invoke(q) for q in queries]
-    print(f"Documents récupérés : {results}")
+    print("[LOG] Documents récupérés :", results)
     
-    # Fusion par Reciprocal Rank Fusion (RRF)
     fused_scores = {}
     for docs in results:
         for rank, doc in enumerate(docs):
@@ -95,7 +106,7 @@ Output 4 queries:
         for d_str, score in sorted(fused_scores.items(), key=lambda x: x[1], reverse=True)
         for d in [loads(d_str)]
     ]
-    print(f"Documents fusionnés : {len(reranked_docs)} documents rerankés.")
+    print(f"[LOG] Documents fusionnés : {len(reranked_docs)} documents rerankés.")
     
     context = "\n\n".join([doc.page_content for doc, _ in reranked_docs])
     
@@ -113,19 +124,24 @@ Provide a clear, fact-based answer focusing on the M&A domain.
     final_input = {"context": context, "question": question}
     answer = (answer_prompt | llm | StrOutputParser()).invoke(final_input)
     
+    print("[LOG] Réponse générée.")
     return answer
 
 
 # --- Fonction RAG Fusion Actualités ---
 def rag_fusion_actualites(question: str) -> str:
-    # Téléchargement de l'index FAISS pour les actualités
-    local_index_path = "./data/FAISS_index_actualites"
+    print("[LOG] Démarrage de rag_fusion_actualites pour la question :", question)
+    local_index_dir = "./data/FAISS_index_actualites"
+    local_index_file = os.path.join(local_index_dir, "index.faiss")
     gcs_blob_path = "FAISS_index_actualites/index.faiss"
-    if not os.path.exists(local_index_path):
-        download_file_from_gcs(GCS_BUCKET, gcs_blob_path, local_index_path)
+    if not os.path.exists(local_index_file):
+        download_file_from_gcs(GCS_BUCKET, gcs_blob_path, local_index_file)
+    else:
+        print(f"[LOG] Fichier index actualités déjà présent : {local_index_file}")
     
     embedding = OpenAIEmbeddings()
-    vectorstore = FAISS.load_local(local_index_path, embeddings=embedding, allow_dangerous_deserialization=True)
+    vectorstore = FAISS.load_local(local_index_dir, embeddings=embedding, allow_dangerous_deserialization=True)
+    print("[LOG] Index actualités chargé.")
     retriever = vectorstore.as_retriever(search_type="mmr", search_kwargs={"k": 10, "score_threshold": 0.01})
     
     query_generation_template = """You are a knowledgeable M&A news analyst. Your role is to generate multiple targeted search queries to retrieve the most relevant and recent M&A news from a specialized news database.
@@ -136,15 +152,15 @@ Generate exactly 4 specific and focused queries related to recent M&A news, anno
 Output 4 queries:
 """
     prompt_rag_fusion = ChatPromptTemplate.from_template(query_generation_template)
-    generate_queries = (prompt_rag_fusion 
-                        | ChatOpenAI(model='o1-mini') 
-                        | StrOutputParser() 
+    generate_queries = (prompt_rag_fusion
+                        | ChatOpenAI(model='o1-mini')
+                        | StrOutputParser()
                         | (lambda x: x.split("\n")))
     queries = generate_queries.invoke({"question": question})
-    print(f"Requêtes générées : {queries}")
+    print("[LOG] Requêtes générées :", queries)
     
     results = [retriever.invoke(q) for q in queries]
-    print(f"Documents récupérés : {results}")
+    print("[LOG] Documents récupérés :", results)
     
     fused_scores = {}
     for docs in results:
@@ -159,7 +175,7 @@ Output 4 queries:
         for d_str, score in sorted(fused_scores.items(), key=lambda x: x[1], reverse=True)
         for d in [loads(d_str)]
     ]
-    print(f"Documents fusionnés : {len(reranked_docs)} documents rerankés.")
+    print(f"[LOG] Documents fusionnés : {len(reranked_docs)} documents rerankés.")
     
     context = "\n\n".join([doc.page_content for doc, _ in reranked_docs])
     
@@ -178,19 +194,24 @@ Else, provide a clear and fact-based answer drawn from the provided context.
     final_input = {"context": context, "question": question}
     answer = (answer_prompt | llm | StrOutputParser()).invoke(final_input)
     
+    print("[LOG] Réponse actualités générée.")
     return answer
 
 
 # --- Fonction RAG Fusion Fonds ---
 def rag_fusion_fonds(question: str) -> str:
-    # Téléchargement de l'index FAISS pour les fonds
-    local_index_path = "./data/FAISS_index_fonds"
+    print("[LOG] Démarrage de rag_fusion_fonds pour la question :", question)
+    local_index_dir = "./data/FAISS_index_fonds"
+    local_index_file = os.path.join(local_index_dir, "index.faiss")
     gcs_blob_path = "FAISS_index_fonds/index.faiss"
-    if not os.path.exists(local_index_path):
-        download_file_from_gcs(GCS_BUCKET, gcs_blob_path, local_index_path)
+    if not os.path.exists(local_index_file):
+        download_file_from_gcs(GCS_BUCKET, gcs_blob_path, local_index_file)
+    else:
+        print(f"[LOG] Fichier index fonds déjà présent : {local_index_file}")
     
     embedding = OpenAIEmbeddings()
-    vectorstore = FAISS.load_local(local_index_path, embeddings=embedding, allow_dangerous_deserialization=True)
+    vectorstore = FAISS.load_local(local_index_dir, embeddings=embedding, allow_dangerous_deserialization=True)
+    print("[LOG] Index fonds chargé.")
     retriever = vectorstore.as_retriever(search_type="mmr", search_kwargs={"k": 20, "score_threshold": 0.01})
     
     query_generation_template = """You are an expert in private equity and investment funds. The user has asked a question related to investment funds, their strategies, sectors, geographic focus, or recent deals. Given the user's query:
@@ -200,15 +221,15 @@ def rag_fusion_fonds(question: str) -> str:
 Your task is to generate five different versions of the given user question to retrieve relevant documents from a vector database. By generating multiple perspectives on the user question, your goal is to help the user overcome some of the limitations of the distance-based similarity search. Provide these alternative questions separated by newlines.
 """
     prompt_rag_fusion = ChatPromptTemplate.from_template(query_generation_template)
-    generate_queries = (prompt_rag_fusion 
-                        | ChatOpenAI(model='o1-mini') 
-                        | StrOutputParser() 
+    generate_queries = (prompt_rag_fusion
+                        | ChatOpenAI(model='o1-mini')
+                        | StrOutputParser()
                         | (lambda x: x.split("\n")))
     queries = generate_queries.invoke({"question": question})
-    print(f"Requêtes générées : {queries}")
+    print("[LOG] Requêtes générées :", queries)
     
     results = [retriever.invoke(q) for q in queries]
-    print(f"Documents récupérés : {results}")
+    print("[LOG] Documents récupérés :", results)
     
     fused_scores = {}
     for docs in results:
@@ -223,7 +244,7 @@ Your task is to generate five different versions of the given user question to r
         for d_str, score in sorted(fused_scores.items(), key=lambda x: x[1], reverse=True)
         for d in [loads(d_str)]
     ]
-    print(f"Documents fusionnés : {len(reranked_docs)} documents rerankés.")
+    print(f"[LOG] Documents fusionnés : {len(reranked_docs)} documents rerankés.")
     
     context = "\n\n".join([doc.page_content for doc, _ in reranked_docs])
     
@@ -241,23 +262,27 @@ Offer a fact-based, to-the-point response, highlighting key investment criteria 
     final_input = {"context": context, "question": question}
     answer = (answer_prompt | llm | StrOutputParser()).invoke(final_input)
     
+    print("[LOG] Réponse fonds générée.")
     return answer
 
 
 # --- Fonction RAG Fusion Fiche Société vers Word ---
 def rag_fusion_fiche_societe_to_word(question: str) -> dict:
     """
-    Interroge la base d'actualités M&A via RAG et retourne une réponse structurée
-    adaptée pour remplir un template Word.
+    Interroge la base d'actualités M&A via RAG et retourne une réponse structurée adaptée pour remplir un template Word.
     """
-    # Pour cette fonction, nous utilisons l'index FAISS des actualités
-    local_index_path = "./data/FAISS_index_actualites"
+    print("[LOG] Démarrage de rag_fusion_fiche_societe_to_word pour la question :", question)
+    local_index_dir = "./data/FAISS_index_actualites"
+    local_index_file = os.path.join(local_index_dir, "index.faiss")
     gcs_blob_path = "FAISS_index_actualites/index.faiss"
-    if not os.path.exists(local_index_path):
-        download_file_from_gcs(GCS_BUCKET, gcs_blob_path, local_index_path)
+    if not os.path.exists(local_index_file):
+        download_file_from_gcs(GCS_BUCKET, gcs_blob_path, local_index_file)
+    else:
+        print(f"[LOG] Fichier index actualités déjà présent : {local_index_file}")
     
     embedding = OpenAIEmbeddings()
-    vectorstore = FAISS.load_local(local_index_path, embeddings=embedding, allow_dangerous_deserialization=True)
+    vectorstore = FAISS.load_local(local_index_dir, embeddings=embedding, allow_dangerous_deserialization=True)
+    print("[LOG] Index actualités chargé pour fiche société.")
     retriever = vectorstore.as_retriever(search_type="mmr", search_kwargs={"k": 10, "score_threshold": 0.01})
     
     query_generation_template = """You are a knowledgeable M&A news analyst. Your role is to generate multiple targeted search queries to retrieve the most relevant and recent M&A news from a specialized news database. Always give your source. It's in the name of the document you are using the information (it's Arx or CFNews. Do not say that it comes from the context, always say that it is from Arx or CFNews from the name of the doc in the metadata).
@@ -267,15 +292,15 @@ Given the user's question: {question}
 Your task is to generate five different versions of the given user question to retrieve relevant documents from a vector database. By generating multiple perspectives on the user question, your goal is to help the user overcome some of the limitations of the distance-based similarity search. Provide these alternative questions separated by newlines.
 """
     prompt_rag_fusion = ChatPromptTemplate.from_template(query_generation_template)
-    generate_queries = (prompt_rag_fusion 
-                        | ChatOpenAI(model='o1-mini') 
-                        | StrOutputParser() 
+    generate_queries = (prompt_rag_fusion
+                        | ChatOpenAI(model='o1-mini')
+                        | StrOutputParser()
                         | (lambda x: x.split("\n")))
     queries = generate_queries.invoke({"question": question})
-    print(f"Requêtes générées : {queries}")
+    print("[LOG] Requêtes générées :", queries)
     
     results = [retriever.invoke(q) for q in queries]
-    print(f"Documents récupérés : {results}")
+    print("[LOG] Documents récupérés :", results)
     
     fused_scores = {}
     for docs in results:
@@ -290,7 +315,7 @@ Your task is to generate five different versions of the given user question to r
         for d_str, score in sorted(fused_scores.items(), key=lambda x: x[1], reverse=True)
         for d in [json.loads(d_str)]
     ]
-    print(f"Documents fusionnés : {len(reranked_docs)} documents rerankés.")
+    print(f"[LOG] Documents fusionnés : {len(reranked_docs)} documents rerankés.")
     
     context = "\n\n".join([doc.page_content for doc, _ in reranked_docs])
     
@@ -328,43 +353,29 @@ Respond ONLY inside the following structure (do not include any explanations, fo
     answer = (answer_prompt | llm | StrOutputParser()).invoke(final_input)
     
     try:
-        print("Réponse du LLM:", answer)
+        print("[LOG] Réponse du LLM:", answer)
         answer_dict = json.loads(answer)
     except json.JSONDecodeError:
         answer_dict = {}
-        print("Erreur lors du parsing JSON de la réponse du LLM.")
+        print("[LOG] Erreur lors du parsing JSON de la réponse du LLM.")
     
     return answer_dict
 
 
-# --- Fonction pour générer une fiche société (Word) ---
-def generate_fiche_societe(llm_response: dict, template_path: str, output_path: str):
-    """
-    Remplit un template Word avec les données de la réponse du LLM.
-    
-    :param llm_response: dict contenant les informations de la fiche société
-    :param template_path: chemin vers le template Word (ce fichier peut aussi être téléchargé depuis GCS si nécessaire)
-    :param output_path: chemin où le document rempli sera sauvegardé
-    """
-    doc = DocxTemplate(template_path)
-    
-    # Ajouter la date actuelle si elle n'est pas fournie
-    if 'date' not in llm_response or not llm_response['date']:
-        llm_response['date'] = datetime.datetime.now().strftime("%Y-%m-%d")
-    
-    doc.render(llm_response)
-    doc.save(output_path)
-
-
 # --- Fonction RAG Fusion Multiples Transactions Comparables ---
 def rag_fusion_multiples_transactions_comparables(question: str) -> str:
-    local_index_path = "./data/FAISS_index_multiples"
+    print("[LOG] Démarrage de rag_fusion_multiples_transactions_comparables pour la question :", question)
+    local_index_dir = "./data/FAISS_index_multiples"
+    local_index_file = os.path.join(local_index_dir, "index.faiss")
     gcs_blob_path = "FAISS_index_multiples/index.faiss"
-    if not os.path.exists(local_index_path):
-        download_file_from_gcs(GCS_BUCKET, gcs_blob_path, local_index_path)
+    if not os.path.exists(local_index_file):
+        download_file_from_gcs(GCS_BUCKET, gcs_blob_path, local_index_file)
+    else:
+        print(f"[LOG] Fichier index multiples déjà présent : {local_index_file}")
     
     embedding = OpenAIEmbeddings()
-    vectorstore = FAISS.load_local(local_index_path, embeddings=embedding, allow_dangerous_deserialization=True)
+    vectorstore = FAISS.load_local(local_index_dir, embeddings=embedding, allow_dangerous_deserialization=True)
+    print("[LOG] Index multiples chargé.")
     retriever = vectorstore.as_retriever(search_type="mmr", search_kwargs={"k": 20, "score_threshold": 0.01})
     
     query_generation_template = """You are an expert in mergers, acquisitions, and financial transactions. 
@@ -373,15 +384,18 @@ Given the user's query:
 
 {question}
 
-Your task is to generate five alternative versions of the user question to retrieve relevant documents from a vector database. The goal is to capture different perspectives of the user's query to ensure relevant documents are retrieved. Provide these alternative questions separated by newlines.
+Your task is to generate five alternative versions of the user question to retrieve relevant documents from a vector database. The goal is to capture different perspectives on the user's query to ensure relevant documents are retrieved. Provide these alternative questions separated by newlines.
 """
     prompt_rag_fusion = ChatPromptTemplate.from_template(query_generation_template)
-    generate_queries = (prompt_rag_fusion | ChatOpenAI(model='o1-mini') | StrOutputParser() | (lambda x: x.split("\n")))
+    generate_queries = (prompt_rag_fusion 
+                        | ChatOpenAI(model='o1-mini') 
+                        | StrOutputParser() 
+                        | (lambda x: x.split("\n")))
     queries = generate_queries.invoke({"question": question})
-    print(f"Requêtes générées : {queries}")
+    print("[LOG] Requêtes générées :", queries)
     
     results = [retriever.invoke(q) for q in queries]
-    print(f"Documents récupérés : {results}")
+    print("[LOG] Documents récupérés :", results)
     
     fused_scores = {}
     for docs in results:
@@ -396,26 +410,23 @@ Your task is to generate five alternative versions of the user question to retri
         for d_str, score in sorted(fused_scores.items(), key=lambda x: x[1], reverse=True)
         for d in [loads(d_str)]
     ]
-    print(f"Documents fusionnés : {len(reranked_docs)} documents rerankés.")
+    print(f"[LOG] Documents fusionnés : {len(reranked_docs)} documents rerankés.")
     
     context = "\n\n".join([doc.page_content for doc, _ in reranked_docs])
     
-    answer_template = """You are an expert in financial transactions and valuation multiples. Using the following 
-context sourced from a database of comparable transactions, provide insights about relevant transactions, 
-key valuation multiples (e.g., EV/Revenue, EV/EBITDA), and deal characteristics.
+    answer_template = """You are an expert in financial transactions and valuation multiples. Using the following context sourced from a database of comparable transactions, provide insights about relevant transactions, key valuation multiples (e.g., EV/Revenue, EV/EBITDA), and deal characteristics.
 
 Context:
 {context}
 
 Question: {question}
 
-Your response should be factual, concise, and focused solely on the provided context. Include specific 
-multiples, transaction details, and other financial metrics when possible. Always indicate the source of 
-your information (it will always be MergerMarket.)
+Your response should be factual, concise, and focused solely on the provided context. Include specific multiples, transaction details, and other financial metrics when possible. Always indicate the source of your information (it will always be MergerMarket.)
 """
     answer_prompt = ChatPromptTemplate.from_template(answer_template)
     llm = ChatOpenAI(model='o1-mini')
     final_input = {"context": context, "question": question}
     answer = (answer_prompt | llm | StrOutputParser()).invoke(final_input)
     
+    print("[LOG] Réponse multiples transactions générée.")
     return answer
