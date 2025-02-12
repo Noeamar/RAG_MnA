@@ -431,22 +431,25 @@ Your response should be factual, concise, and focused solely on the provided con
     print("[LOG] Réponse multiples transactions générée.")
     return answer
 
-# --- Nouvelle fonctionnalité : Filigraner un PDF ---
 import io
 from PyPDF2 import PdfReader, PdfWriter
 from reportlab.pdfgen import canvas
 from reportlab.lib.pagesizes import letter
 
-def add_watermark_to_pdf(input_pdf_bytes: bytes, watermark_text: str) -> bytes:
+def add_watermark_to_pdf(input_pdf_bytes: bytes, bank_name: str) -> bytes:
     """
-    Ajoute un filigrane au PDF contenu dans input_pdf_bytes et retourne le PDF modifié en bytes.
+    Ajoute un filigrane au PDF contenu dans input_pdf_bytes.
+    Le filigrane sera au format "Confidentiel - <Nom>" (avec un espace après le tiret).
+    Retourne le PDF modifié sous forme d'octets.
     """
-    print("[LOG] Début du filigranage du PDF...", flush=True)
+    # Prépare le texte du filigrane en ajoutant "Confidentiel - " avant le nom de banque
+    watermark_text = f"Confidentiel - {bank_name.strip()}"
+    
     # Créer un PDF de filigrane en mémoire
     packet = io.BytesIO()
     can = canvas.Canvas(packet, pagesize=letter)
     can.rotate(45)
-    can.setFillColorRGB(0, 0, 0, alpha=0.15)
+    can.setFillColorRGB(0, 0, 0, alpha=0.15)  # Couleur noire avec 15% d'opacité
     can.setFont("Helvetica", 50)
     can.drawString(200, 100, watermark_text)
     can.save()
@@ -455,7 +458,7 @@ def add_watermark_to_pdf(input_pdf_bytes: bytes, watermark_text: str) -> bytes:
     watermark_pdf = PdfReader(packet)
     watermark_page = watermark_pdf.pages[0]
     
-    # Lire le PDF d'entrée depuis les bytes
+    # Lire le PDF d'entrée depuis les octets
     input_pdf_stream = io.BytesIO(input_pdf_bytes)
     reader = PdfReader(input_pdf_stream)
     writer = PdfWriter()
@@ -465,10 +468,9 @@ def add_watermark_to_pdf(input_pdf_bytes: bytes, watermark_text: str) -> bytes:
         page.merge_page(watermark_page)
         writer.add_page(page)
     
-    # Écrire le PDF résultant dans un BytesIO
+    # Écrire le PDF modifié dans un flux de sortie
     output_pdf_stream = io.BytesIO()
     writer.write(output_pdf_stream)
     output_pdf_stream.seek(0)
     
-    print("[LOG] Filigranage terminé.", flush=True)
     return output_pdf_stream.getvalue()
