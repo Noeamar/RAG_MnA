@@ -96,14 +96,16 @@ if st.session_state["registered"] and st.session_state["ready_to_access"]:
         st.write("Ask a question here, and the AI will query the dedicated news database.")
         question = st.text_input("Ask your question (News):", key="news_question")
         if question:
-            with st.spinner("Generating answer..."):
+            st.info("Question reçue !")
+            with st.spinner("Téléchargement des données et traitement en cours..."):
                 try:
                     answer = rag_fusion_actualites(question)
+                    st.success("Données traitées avec succès.")
                     st.write("AI-Generated Answer:")
                     st.success(answer)
                 except Exception as e:
                     st.error(f"An error occurred while generating the answer: {e}")
-    
+                    
     elif menu == "Funds":
         st.header("Query the Funds Database")
         st.write("Ask a question here, and the AI will query the dedicated funds database.")
