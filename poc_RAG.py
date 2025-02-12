@@ -60,7 +60,7 @@ def download_file_from_gcs(bucket_name: str, source_blob_name: str, destination_
 def rag_fusion(question: str) -> str:
     print("[LOG] Démarrage de rag_fusion pour la question :", question)
     # On définit le répertoire local qui contient l'index.
-    local_index_dir = "./data/FAISS_index"
+    local_index_dir = "./Data/FAISS_index"
     local_index_file = os.path.join(local_index_dir, "index.faiss")
     gcs_blob_path = "FAISS_index/index.faiss"
     if not os.path.exists(local_index_file):
@@ -131,7 +131,7 @@ Provide a clear, fact-based answer focusing on the M&A domain.
 # --- Fonction RAG Fusion Actualités ---
 def rag_fusion_actualites(question: str) -> str:
     print("[LOG] Démarrage de rag_fusion_actualites pour la question :", question)
-    local_index_dir = "./data/FAISS_index_actualites"
+    local_index_dir = "./Data/FAISS_index_actualites"
     local_index_file = os.path.join(local_index_dir, "index.faiss")
     gcs_blob_path = "FAISS_index_actualites/index.faiss"
     if not os.path.exists(local_index_file):
@@ -201,7 +201,7 @@ Else, provide a clear and fact-based answer drawn from the provided context.
 # --- Fonction RAG Fusion Fonds ---
 def rag_fusion_fonds(question: str) -> str:
     print("[LOG] Démarrage de rag_fusion_fonds pour la question :", question)
-    local_index_dir = "./data/FAISS_index_fonds"
+    local_index_dir = "./Data/FAISS_index_fonds"
     local_index_file = os.path.join(local_index_dir, "index.faiss")
     gcs_blob_path = "FAISS_index_fonds/index.faiss"
     if not os.path.exists(local_index_file):
@@ -272,7 +272,7 @@ def rag_fusion_fiche_societe_to_word(question: str) -> dict:
     Interroge la base d'actualités M&A via RAG et retourne une réponse structurée adaptée pour remplir un template Word.
     """
     print("[LOG] Démarrage de rag_fusion_fiche_societe_to_word pour la question :", question)
-    local_index_dir = "./data/FAISS_index_actualites"
+    local_index_dir = "./Data/FAISS_index_actualites"
     local_index_file = os.path.join(local_index_dir, "index.faiss")
     gcs_blob_path = "FAISS_index_actualites/index.faiss"
     if not os.path.exists(local_index_file):
@@ -365,7 +365,7 @@ Respond ONLY inside the following structure (do not include any explanations, fo
 # --- Fonction RAG Fusion Multiples Transactions Comparables ---
 def rag_fusion_multiples_transactions_comparables(question: str) -> str:
     print("[LOG] Démarrage de rag_fusion_multiples_transactions_comparables pour la question :", question)
-    local_index_dir = "./data/FAISS_index_multiples"
+    local_index_dir = "./Data/FAISS_index_multiples"
     local_index_file = os.path.join(local_index_dir, "index.faiss")
     gcs_blob_path = "FAISS_index_multiples/index.faiss"
     if not os.path.exists(local_index_file):
