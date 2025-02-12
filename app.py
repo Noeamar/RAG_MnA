@@ -1,7 +1,8 @@
 import streamlit as st
 from poc_RAG import (
     rag_fusion, rag_fusion_actualites, rag_fusion_fonds,
-    rag_fusion_multiples_transactions_comparables
+    rag_fusion_fiche_societe_to_word, generate_fiche_societe,
+    rag_fusion_multiples_transactions_comparables, add_watermark_to_pdf
 )
 from langchain.document_loaders import WebBaseLoader
 import os
@@ -65,7 +66,7 @@ if st.session_state["registered"] and st.session_state["ready_to_access"]:
     
     menu = st.sidebar.radio(
         "Navigation",
-        options=["Home", "Comprehensive Data (News+Companies+Funds)", "News", "Funds", "Comparable Transactions"],
+        options=["Home", "Comprehensive Data (News+Companies+Funds)", "News", "Funds", "Comparable Transactions", "Watermark PDF"],
         key="main_navigation"
     )
     
@@ -83,9 +84,11 @@ if st.session_state["registered"] and st.session_state["ready_to_access"]:
         st.write("Ask a question here, and the AI will query the full database, including news, companies, and funds.")
         question = st.text_input("Ask your question:", key="comprehensive_data")
         if question:
+            st.info("Question received!")
             with st.spinner("Generating answer..."):
                 try:
                     answer = rag_fusion(question)
+                    st.success("Answer generated successfully!")
                     st.write("AI-Generated Answer:")
                     st.success(answer)
                 except Exception as e:
@@ -96,24 +99,26 @@ if st.session_state["registered"] and st.session_state["ready_to_access"]:
         st.write("Ask a question here, and the AI will query the dedicated news database.")
         question = st.text_input("Ask your question (News):", key="news_question")
         if question:
-            st.info("Question reçue !")
-            with st.spinner("Téléchargement des données et traitement en cours..."):
+            st.info("Question received!")
+            with st.spinner("Generating answer..."):
                 try:
                     answer = rag_fusion_actualites(question)
-                    st.success("Données traitées avec succès.")
+                    st.success("Answer generated successfully!")
                     st.write("AI-Generated Answer:")
                     st.success(answer)
                 except Exception as e:
                     st.error(f"An error occurred while generating the answer: {e}")
-                    
+    
     elif menu == "Funds":
         st.header("Query the Funds Database")
         st.write("Ask a question here, and the AI will query the dedicated funds database.")
         question = st.text_input("Ask your question (Funds):", key="funds_question")
         if question:
+            st.info("Question received!")
             with st.spinner("Generating answer..."):
                 try:
                     answer = rag_fusion_fonds(question)
+                    st.success("Answer generated successfully!")
                     st.write("AI-Generated Answer:")
                     st.success(answer)
                 except Exception as e:
@@ -124,10 +129,39 @@ if st.session_state["registered"] and st.session_state["ready_to_access"]:
         st.write("Ask a question here, and the AI will query the database dedicated to comparable transactions and financial multiples.")
         question = st.text_input("Ask your question (Comparable Transactions):", key="transactions_question")
         if question:
+            st.info("Question received!")
             with st.spinner("Generating answer..."):
                 try:
                     answer = rag_fusion_multiples_transactions_comparables(question)
+                    st.success("Answer generated successfully!")
                     st.write("AI-Generated Answer:")
                     st.success(answer)
                 except Exception as e:
                     st.error(f"An error occurred while generating the answer: {e}")
+    
+    elif menu == "Watermark PDF":
+        st.header("Add Watermark to PDF")
+        st.write("Upload a PDF and add one or more watermark texts to generate watermarked versions for download.")
+        uploaded_pdf = st.file_uploader("Upload a PDF", type=["pdf"], key="uploaded_pdf")
+        if uploaded_pdf is not None:
+            pdf_bytes = uploaded_pdf.read()
+            st.write(f"Uploaded file: {uploaded_pdf.name} ({len(pdf_bytes)} bytes)")
+            watermark_text = st.text_input("Enter watermark text (e.g., 'Confidentiel - CIC')", key="watermark_text")
+            if st.button("Add Watermark"):
+                if watermark_text:
+                    with st.spinner("Generating watermarked PDF..."):
+                        try:
+                            watermarked_pdf_bytes = add_watermark_to_pdf(pdf_bytes, watermark_text)
+                            if "watermarked_pdfs" not in st.session_state:
+                                st.session_state["watermarked_pdfs"] = []
+                            st.session_state["watermarked_pdfs"].append((watermark_text, watermarked_pdf_bytes))
+                            st.success(f"Watermarked PDF generated with watermark: {watermark_text}")
+                        except Exception as e:
+                            st.error(f"An error occurred while generating the watermarked PDF: {e}")
+                else:
+                    st.error("Please enter a watermark text.")
+            if "watermarked_pdfs" in st.session_state and st.session_state["watermarked_pdfs"]:
+                st.subheader("Generated Watermarked PDFs")
+                for i, (text, pdf_data) in enumerate(st.session_state["watermarked_pdfs"]):
+                    st.write(f"Watermark: {text}")
+                    st.download_button(label="Download Watermarked PDF", data=pdf_data, file_name=f"watermarked_{i+1}.pdf", mime="application/pdf")

@@ -430,3 +430,45 @@ Your response should be factual, concise, and focused solely on the provided con
     
     print("[LOG] Réponse multiples transactions générée.")
     return answer
+
+# --- Nouvelle fonctionnalité : Filigraner un PDF ---
+import io
+from PyPDF2 import PdfReader, PdfWriter
+from reportlab.pdfgen import canvas
+from reportlab.lib.pagesizes import letter
+
+def add_watermark_to_pdf(input_pdf_bytes: bytes, watermark_text: str) -> bytes:
+    """
+    Ajoute un filigrane au PDF contenu dans input_pdf_bytes et retourne le PDF modifié en bytes.
+    """
+    print("[LOG] Début du filigranage du PDF...", flush=True)
+    # Créer un PDF de filigrane en mémoire
+    packet = io.BytesIO()
+    can = canvas.Canvas(packet, pagesize=letter)
+    can.rotate(45)
+    can.setFillColorRGB(0, 0, 0, alpha=0.15)
+    can.setFont("Helvetica", 50)
+    can.drawString(200, 100, watermark_text)
+    can.save()
+    
+    packet.seek(0)
+    watermark_pdf = PdfReader(packet)
+    watermark_page = watermark_pdf.pages[0]
+    
+    # Lire le PDF d'entrée depuis les bytes
+    input_pdf_stream = io.BytesIO(input_pdf_bytes)
+    reader = PdfReader(input_pdf_stream)
+    writer = PdfWriter()
+    
+    # Appliquer le filigrane à chaque page
+    for page in reader.pages:
+        page.merge_page(watermark_page)
+        writer.add_page(page)
+    
+    # Écrire le PDF résultant dans un BytesIO
+    output_pdf_stream = io.BytesIO()
+    writer.write(output_pdf_stream)
+    output_pdf_stream.seek(0)
+    
+    print("[LOG] Filigranage terminé.", flush=True)
+    return output_pdf_stream.getvalue()
