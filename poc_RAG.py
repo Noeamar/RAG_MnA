@@ -435,42 +435,57 @@ import io
 from PyPDF2 import PdfReader, PdfWriter
 from reportlab.pdfgen import canvas
 from reportlab.lib.pagesizes import letter
+from reportlab.pdfbase import pdfmetrics
 
 def add_watermark_to_pdf(input_pdf_bytes: bytes, bank_name: str) -> bytes:
     """
     Ajoute un filigrane au PDF contenu dans input_pdf_bytes.
-    Le filigrane sera au format "Confidentiel - <Nom>" (avec un espace après le tiret).
-    Retourne le PDF modifié sous forme d'octets.
+    Le filigrane aura la forme "Confidentiel - <bank_name>" (avec un espace après le tiret),
+    centré en fonction des dimensions du PDF (utilise la taille de la première page).
+    Retourne le PDF filigrané sous forme d'octets.
     """
-    # Prépare le texte du filigrane en ajoutant "Confidentiel - " avant le nom de banque
+    # Construire le texte du filigrane
     watermark_text = f"Confidentiel - {bank_name.strip()}"
     
-    # Créer un PDF de filigrane en mémoire
+    # Lire le PDF d'entrée pour obtenir ses dimensions (à partir de la première page)
+    input_pdf_stream = io.BytesIO(input_pdf_bytes)
+    reader = PdfReader(input_pdf_stream)
+    if len(reader.pages) == 0:
+        raise ValueError("Le PDF d'entrée ne contient aucune page.")
+    first_page = reader.pages[0]
+    page_width = float(first_page.mediabox.width)
+    page_height = float(first_page.mediabox.height)
+    
+    # Créer un PDF de filigrane avec ReportLab avec la même taille que la page
     packet = io.BytesIO()
-    can = canvas.Canvas(packet, pagesize=letter)
+    can = canvas.Canvas(packet, pagesize=(page_width, page_height))
+    
+    # Calculer la largeur du texte avec la police Helvetica taille 50
+    text_width = pdfmetrics.stringWidth(watermark_text, "Helvetica", 50)
+    # Positionner le texte au centre
+    x = (page_width - text_width) / 2
+    y = page_height / 2
+    # Vous pouvez ajuster la rotation si vous souhaitez conserver un effet diagonal ; ici on ne fait pas de rotation pour centrer précisément
     can.rotate(45)
-    can.setFillColorRGB(0, 0, 0, alpha=0.15)  # Couleur noire avec 15% d'opacité
+    can.setFillColorRGB(0, 0, 0, alpha=0.15)
     can.setFont("Helvetica", 50)
-    can.drawString(200, 100, watermark_text)
+    can.drawString(x, y, watermark_text)
     can.save()
     
     packet.seek(0)
     watermark_pdf = PdfReader(packet)
     watermark_page = watermark_pdf.pages[0]
     
-    # Lire le PDF d'entrée depuis les octets
-    input_pdf_stream = io.BytesIO(input_pdf_bytes)
-    reader = PdfReader(input_pdf_stream)
+    # Créer un PdfWriter pour construire le PDF de sortie
     writer = PdfWriter()
-    
     # Appliquer le filigrane à chaque page
     for page in reader.pages:
         page.merge_page(watermark_page)
         writer.add_page(page)
     
-    # Écrire le PDF modifié dans un flux de sortie
     output_pdf_stream = io.BytesIO()
     writer.write(output_pdf_stream)
     output_pdf_stream.seek(0)
     
+    print("[LOG] Filigranage terminé.", flush=True)
     return output_pdf_stream.getvalue()
