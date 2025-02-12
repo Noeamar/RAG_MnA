@@ -133,6 +133,7 @@ python-dotenv==1.0.1
 pytz==2024.2
 pywin32==308; platform_system == "Windows"
 PyYAML==6.0.2
+PyPDF2==3.0.1
 pyzmq==26.2.0
 referencing==0.35.1
 regex==2024.11.6
