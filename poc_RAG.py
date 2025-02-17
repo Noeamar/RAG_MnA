@@ -82,7 +82,7 @@ def rag_fusion(question: str) -> str:
     if not os.path.exists(local_index_file):
         try:
             # Tenter de récupérer le fichier via st.connection
-            from streamlit.runtime.connections import FilesConnection
+            from streamlit.connections import FilesConnection
             conn = st.connection("gcs", type=FilesConnection)
             print(f"[LOG] Tentative de récupération du fichier {gcs_blob_path} via st.connection...", flush=True)
             file_bytes = conn.read(gcs_blob_path, input_format="binary", ttl=600)
