@@ -38,8 +38,6 @@ os.environ['OPENAI_API_KEY'] = openai_api_key
 # Nom du bucket GCS (vérifiez que vos credentials sont configurés)
 GCS_BUCKET = "rag-mna_cloudbuild"
 
-from streamlit.runtime.connections import FilesConnection
-
 def read_faiss_file_from_gcs(bucket_filepath: str, ttl: int = 600) -> bytes:
     """
     Lit un fichier binaire (par exemple, un index FAISS) depuis Google Cloud Storage.
