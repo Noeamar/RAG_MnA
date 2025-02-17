@@ -70,29 +70,23 @@ def download_file_from_gcs(bucket_name: str, source_blob_name: str, destination_
         raise ValueError(f"Le fichier {destination_file_name} est vide après téléchargement.")
 
 
+import os
+
 def rag_fusion(question: str) -> str:
     print("[LOG] Démarrage de rag_fusion pour la question :", question, flush=True)
-    # On définit le répertoire local qui contient l'index.
+    # Définir le répertoire et le chemin du fichier local
     local_index_dir = "./Data/FAISS_index"
     local_index_file = os.path.join(local_index_dir, "index.faiss")
     gcs_blob_path = "index.faiss"  # Chemin dans le bucket
+    
+    # Forcer la suppression du fichier local s'il existe pour forcer le téléchargement
+    if os.path.exists(local_index_file):
+        os.remove(local_index_file)
+        print(f"[LOG] Fichier existant supprimé pour forcer le téléchargement depuis GCS.", flush=True)
+    
+    # Télécharger le fichier depuis GCS
+    download_file_from_gcs(GCS_BUCKET, gcs_blob_path, local_index_file)
 
-    if not os.path.exists(local_index_file):
-        try:
-            # Tenter de récupérer le fichier via st.connection
-            from streamlit.connections import FilesConnection
-            conn = st.connection("gcs", type=FilesConnection)
-            print(f"[LOG] Tentative de récupération du fichier {gcs_blob_path} via st.connection...", flush=True)
-            file_bytes = conn.read(gcs_blob_path, input_format="binary", ttl=600)
-            os.makedirs(local_index_dir, exist_ok=True)
-            with open(local_index_file, "wb") as f:
-                f.write(file_bytes)
-            print(f"[LOG] Fichier récupéré via st.connection et sauvegardé localement : {local_index_file}", flush=True)
-        except Exception as e:
-            print("[LOG] st.connection a échoué, utilisation de download_file_from_gcs :", e, flush=True)
-            download_file_from_gcs(GCS_BUCKET, gcs_blob_path, local_index_file)
-    else:
-        print(f"[LOG] Fichier index déjà présent localement : {local_index_file}", flush=True)
     
     embedding = OpenAIEmbeddings()
     # FAISS.load_local attend le répertoire contenant le fichier "index.faiss"
