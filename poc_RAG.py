@@ -53,9 +53,6 @@ def read_faiss_file_from_gcs(bucket_filepath: str, ttl: int = 600) -> bytes:
 
 
 def download_file_from_gcs(bucket_name: str, source_blob_name: str, destination_file_name: str):
-    """
-    Télécharge un fichier depuis un bucket Google Cloud Storage vers un chemin local.
-    """
     print(f"[LOG] Initialisation du client GCS pour télécharger {source_blob_name}...", flush=True)
     client = storage.Client()  # Utilise les credentials configurés via GOOGLE_APPLICATION_CREDENTIALS
     bucket = client.bucket(bucket_name)
@@ -65,9 +62,12 @@ def download_file_from_gcs(bucket_name: str, source_blob_name: str, destination_
     print(f"[LOG] Téléchargement de gs://{bucket_name}/{source_blob_name} vers {destination_file_name}...", flush=True)
     blob.download_to_filename(destination_file_name)
     
-    # Définir les permissions pour que le fichier soit lisible
+    # Définir les permissions (vous pouvez essayer 0o777 pour tester)
     os.chmod(destination_file_name, 0o777)
-    print("[LOG] Téléchargement terminé et permissions définies.", flush=True)
+    file_size = os.stat(destination_file_name).st_size
+    print(f"[LOG] Téléchargement terminé. Taille du fichier: {file_size} octets", flush=True)
+    if file_size == 0:
+        raise ValueError(f"Le fichier {destination_file_name} est vide après téléchargement.")
 
 
 def rag_fusion(question: str) -> str:
