@@ -23,6 +23,7 @@ from docxtpl import DocxTemplate
 
 # Pour télécharger depuis Google Cloud Storage
 from google.cloud import storage
+from st_files_connection import FilesConnection
 
 # --- Configuration des variables d'environnement ---
 os.environ['LANGCHAIN_TRACING_V2'] = 'true'
@@ -36,6 +37,21 @@ os.environ['OPENAI_API_KEY'] = openai_api_key
 
 # Nom du bucket GCS (vérifiez que vos credentials sont configurés)
 GCS_BUCKET = "rag-mna_cloudbuild"
+
+from streamlit.runtime.connections import FilesConnection
+
+def read_faiss_file_from_gcs(bucket_filepath: str, ttl: int = 600) -> bytes:
+    """
+    Lit un fichier binaire (par exemple, un index FAISS) depuis Google Cloud Storage.
+    
+    :param bucket_filepath: Chemin complet dans le bucket (ex. "streamlit-bucket/myfile.faiss")
+    :param ttl: Durée de cache en secondes (défaut: 600)
+    :return: Le contenu du fichier sous forme d'octets (bytes)
+    """
+    conn = st.connection("gcs", type=FilesConnection)
+    # Spécifier que le format d'entrée est "binary" pour obtenir des bytes
+    file_bytes = conn.read(bucket_filepath, input_format="binary", ttl=ttl)
+    return file_bytes
 
 
 def download_file_from_gcs(bucket_name: str, source_blob_name: str, destination_file_name: str):
@@ -56,22 +72,34 @@ def download_file_from_gcs(bucket_name: str, source_blob_name: str, destination_
     print("[LOG] Téléchargement terminé et permissions définies.", flush=True)
 
 
-# --- Fonction RAG Fusion (Comprehensive Data: News+Companies+Funds) ---
 def rag_fusion(question: str) -> str:
-    print("[LOG] Démarrage de rag_fusion pour la question :", question)
+    print("[LOG] Démarrage de rag_fusion pour la question :", question, flush=True)
     # On définit le répertoire local qui contient l'index.
     local_index_dir = "./Data/FAISS_index"
     local_index_file = os.path.join(local_index_dir, "index.faiss")
-    gcs_blob_path = "index.faiss"
+    gcs_blob_path = "index.faiss"  # Chemin dans le bucket
+
     if not os.path.exists(local_index_file):
-        download_file_from_gcs(GCS_BUCKET, gcs_blob_path, local_index_file)
+        try:
+            # Tenter de récupérer le fichier via st.connection
+            from streamlit.runtime.connections import FilesConnection
+            conn = st.connection("gcs", type=FilesConnection)
+            print(f"[LOG] Tentative de récupération du fichier {gcs_blob_path} via st.connection...", flush=True)
+            file_bytes = conn.read(gcs_blob_path, input_format="binary", ttl=600)
+            os.makedirs(local_index_dir, exist_ok=True)
+            with open(local_index_file, "wb") as f:
+                f.write(file_bytes)
+            print(f"[LOG] Fichier récupéré via st.connection et sauvegardé localement : {local_index_file}", flush=True)
+        except Exception as e:
+            print("[LOG] st.connection a échoué, utilisation de download_file_from_gcs :", e, flush=True)
+            download_file_from_gcs(GCS_BUCKET, gcs_blob_path, local_index_file)
     else:
-        print(f"[LOG] Fichier index déjà présent localement : {local_index_file}")
+        print(f"[LOG] Fichier index déjà présent localement : {local_index_file}", flush=True)
     
     embedding = OpenAIEmbeddings()
     # FAISS.load_local attend le répertoire contenant le fichier "index.faiss"
     vectorstore = FAISS.load_local(local_index_dir, embeddings=embedding, allow_dangerous_deserialization=True)
-    print("[LOG] Index FAISS chargé.")
+    print("[LOG] Index FAISS chargé.", flush=True)
     retriever = vectorstore.as_retriever(search_type="mmr", search_kwargs={"k": 10, "score_threshold": 0.01})
     
     query_generation_template = """You are a seasoned M&A consultant with access to a broad dataset that includes recent news, company profiles, and investment fund details. Given the user's question:
@@ -88,10 +116,10 @@ Output 4 queries:
                         | StrOutputParser()
                         | (lambda x: x.split("\n")))
     queries = generate_queries.invoke({"question": question})
-    print("[LOG] Requêtes générées :", queries)
+    print("[LOG] Requêtes générées :", queries, flush=True)
     
     results = [retriever.invoke(q) for q in queries]
-    print("[LOG] Documents récupérés :", results)
+    print("[LOG] Documents récupérés :", results, flush=True)
     
     fused_scores = {}
     for docs in results:
@@ -106,7 +134,7 @@ Output 4 queries:
         for d_str, score in sorted(fused_scores.items(), key=lambda x: x[1], reverse=True)
         for d in [loads(d_str)]
     ]
-    print(f"[LOG] Documents fusionnés : {len(reranked_docs)} documents rerankés.")
+    print(f"[LOG] Documents fusionnés : {len(reranked_docs)} documents rerankés.", flush=True)
     
     context = "\n\n".join([doc.page_content for doc, _ in reranked_docs])
     
@@ -124,7 +152,7 @@ Provide a clear, fact-based answer focusing on the M&A domain.
     final_input = {"context": context, "question": question}
     answer = (answer_prompt | llm | StrOutputParser()).invoke(final_input)
     
-    print("[LOG] Réponse générée.")
+    print("[LOG] Réponse générée.", flush=True)
     return answer
 
 
