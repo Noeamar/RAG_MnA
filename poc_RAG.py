@@ -62,7 +62,7 @@ def rag_fusion(question: str) -> str:
     # On définit le répertoire local qui contient l'index.
     local_index_dir = "./Data/FAISS_index"
     local_index_file = os.path.join(local_index_dir, "index.faiss")
-    gcs_blob_path = "FAISS_index/index.faiss"
+    gcs_blob_path = "index.faiss"
     if not os.path.exists(local_index_file):
         download_file_from_gcs(GCS_BUCKET, gcs_blob_path, local_index_file)
     else:
