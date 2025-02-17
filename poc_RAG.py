@@ -66,7 +66,7 @@ def download_file_from_gcs(bucket_name: str, source_blob_name: str, destination_
     blob.download_to_filename(destination_file_name)
     
     # Définir les permissions pour que le fichier soit lisible
-    os.chmod(destination_file_name, 0o644)
+    os.chmod(destination_file_name, 0o777)
     print("[LOG] Téléchargement terminé et permissions définies.", flush=True)
 
 
