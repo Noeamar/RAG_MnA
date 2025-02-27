@@ -8,8 +8,8 @@ from poc_RAG import (
     download_file_from_github,
     add_watermark_to_pdf,
     generate_fiche_societe
-    
 )
+
 from langchain.document_loaders import WebBaseLoader
 import os
 import pandas as pd
