@@ -185,7 +185,7 @@ Output 4 queries:
     
     context = "\n\n".join([doc.page_content for doc, _ in reranked_docs])
     
-    answer_template = """You are a financial journalist and M&A expert focusing on recent news. Using the following context extracted from M&A news sources, answer the user's question factually and succinctly. Highlight relevant and recent deals, events, or trends. Always present the information chronologically. Do not invent information. Always give your source.
+    answer_template = """You are a financial journalist and M&A expert focusing on recent news. Using the following context extracted from M&A news sources, answer the user's question factually and succinctly. Highlight relevant and recent deals, events, or trends. Always present the information chronologically. Do not invent information. Always give your source. It's always given in the title of the file the information is extracted from. It's either Arx or CFNews.
 
 Context:
 {context}
@@ -253,7 +253,7 @@ Provide these alternative questions separated by newlines.
     
     context = "\n\n".join([doc.page_content for doc, _ in reranked_docs])
     
-    answer_template = """You are a private equity and investment fund specialist. Using the following context sourced from a database of investment funds, answer the user's question focusing on fund characteristics such as ticket size, sector preferences, geographic focus, and investment strategies. Provide a factual and concise explanation based solely on the provided information. Always indicate the source (MergerMarket).
+    answer_template = """You are a private equity and investment fund specialist. Using the following context sourced from a database of investment funds, answer the user's question focusing on fund characteristics such as ticket size, sector preferences, geographic focus, and investment strategies. Provide a factual and concise explanation based solely on the provided information. Always indicate the source (Arx).
 
 Context:
 {context}
