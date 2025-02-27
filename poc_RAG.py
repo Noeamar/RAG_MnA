@@ -185,7 +185,7 @@ Output 4 queries:
     
     context = "\n\n".join([doc.page_content for doc, _ in reranked_docs])
     
-    answer_template = """You are a financial journalist and M&A expert focusing on recent news. Using the following context extracted from M&A news sources, answer the user's question factually and succinctly. Highlight relevant and recent deals, events, or trends. Do not invent information. Always give your source.
+    answer_template = """You are a financial journalist and M&A expert focusing on recent news. Using the following context extracted from M&A news sources, answer the user's question factually and succinctly. Highlight relevant and recent deals, events, or trends. Always present the information chronologically. Do not invent information. Always give your source.
 
 Context:
 {context}
@@ -366,7 +366,7 @@ Respond ONLY within the following structure (no extra text):
     except json.JSONDecodeError as e:
         answer_dict = {}
         print("[LOG] Erreur lors du parsing JSON de la réponse du LLM:", e)
-        
+
     return answer_dict
 
 from docxtpl import DocxTemplate
