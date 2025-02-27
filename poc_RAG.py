@@ -333,21 +333,21 @@ Respond ONLY within the following structure (no extra text):
 
 {{
     "nom_societe": "Provide the company name if found",
-    "description_activite": "Provide detailed description of the company's activities (5-7 lines).",
-    "chiffres_cles": "Include key metrics such as revenue, employee count, or founding date",
-    "clients_par_secteur": "List the main clients by sector",
+    "description_activite": "Provide a detailed description of the company's activities (5-10 lines), using clear and concise language.",
+    "chiffres_cles": "Include key metrics such as revenue, employee count, or founding date, summarized if needed.",
+    "clients_par_secteur": "List the main clients by sector in a synthesized manner",
     "implantation_positionnement": "List cities or countries where the company is located",
-    "elements_financiers": "Describe financial growth over the past 3 years",
+    "elements_financiers": "Summarize the financial growth over the past 3 years in a concise manner",
     "president": "Name of the president",
     "daf": "Name of the financial director",
-    "actionnaire": "List shareholders or investment funds",
+    "actionnaire": "Provide a summarized list of key shareholders or investment funds, with the most important ones highlighted",
     "actionnaire_pourcentage": "Shareholder distribution percentages if available",
-    "creanciers_type": "Type of creditors",
-    "creanciers_commentaires": "Comments about the creditors",
-    "actualites_presse": "As much information as possible",
-    "equity_story": "Details of investments or equity-related events",
-    "creation": "Creation details or year of founding",
-    "acquisition": "Information on acquisitions if available"
+    "creanciers_type": "List types of creditors concisely",
+    "creanciers_commentaires": "Provide a brief summary of the creditors' comments",
+    "actualites_presse": "Present with maximum details and a clear language recent press news in a clear format",
+    "equity_story": "Present with maximum details and a clear language major equity events and investments",
+    "creation": "Present with maximum details and a clear language creation details or year of founding",
+    "acquisition": "Present with maximum details and a clear language key acquisitions, including dates and a descriptions"
 }}
 """
     answer_prompt = ChatPromptTemplate.from_template(answer_template)
