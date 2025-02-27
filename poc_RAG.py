@@ -36,7 +36,7 @@ os.environ['OPENAI_API_KEY'] = openai_api_key
 
 # --- Téléchargement depuis GitHub ---
 # Définissez l'URL de base de votre dépôt public GitHub
-GITHUB_BASE_URL = "https://raw.githubusercontent.com/votre_nom_utilisateur/votre_repo/main/"
+GITHUB_BASE_URL = "https://github.com/Noeamar/RAG_MnA/tree/main"
 
 def download_file_from_github(source_blob_name: str, destination_file_name: str):
     """
@@ -356,13 +356,33 @@ Respond ONLY within the following structure (no extra text):
     answer = (answer_prompt | llm | StrOutputParser()).invoke(final_input)
     
     try:
-        print("[LOG] Réponse du LLM:", answer)
-        answer_dict = json.loads(answer)
-    except json.JSONDecodeError:
+        raw_answer = answer.strip()
+        # Retirer les balises markdown si présentes
+        if raw_answer.startswith("```json"):
+            raw_answer = raw_answer[len("```json"):].strip()
+        if raw_answer.endswith("```"):
+            raw_answer = raw_answer[:-3].strip()
+        answer_dict = json.loads(raw_answer)
+    except json.JSONDecodeError as e:
         answer_dict = {}
-        print("[LOG] Erreur lors du parsing JSON de la réponse du LLM.")
-    
+        print("[LOG] Erreur lors du parsing JSON de la réponse du LLM:", e)
+        
     return answer_dict
+
+from docxtpl import DocxTemplate
+
+def generate_fiche_societe(company_data: dict, template_path: str, output_path: str):
+    """
+    Remplit le template Word avec les données de l'entreprise et sauvegarde le document.
+
+    :param company_data: Dictionnaire contenant les informations de la fiche (générées par le LLM)
+    :param template_path: Chemin vers le template Word (local ou téléchargé depuis GitHub)
+    :param output_path: Chemin de sortie pour sauvegarder la fiche remplie
+    """
+    doc = DocxTemplate(template_path)
+    doc.render(company_data)
+    doc.save(output_path)
+
 
 def rag_fusion_multiples_transactions_comparables(question: str) -> str:
     print("[LOG] Démarrage de rag_fusion_multiples_transactions_comparables pour la question :", question)
