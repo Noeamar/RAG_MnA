@@ -148,7 +148,7 @@ def rag_fusion_actualites(question: str) -> str:
     embedding = OpenAIEmbeddings()
     vectorstore = FAISS.load_local(local_index_dir, embeddings=embedding, allow_dangerous_deserialization=True)
     print("[LOG] Index actualités chargé.")
-    retriever = vectorstore.as_retriever(search_type="mmr", search_kwargs={"fectch_k": 20, "k": 20, "score_threshold": 0.01, "lambda_mult": 0.25})
+    retriever = vectorstore.as_retriever(search_type="mmr", search_kwargs={"fectch_k": 20, "k": 20, "score_threshold": 0.01, "lambda_mult": 0})
     
     query_generation_template = """You are a knowledgeable M&A news analyst. Your role is to generate multiple targeted search queries to retrieve the most relevant and recent M&A news from a specialized news database.
 
