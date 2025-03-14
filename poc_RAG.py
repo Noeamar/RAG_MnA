@@ -466,7 +466,7 @@ def rag_fusion_fiche_societe_to_word_websearch(question: str) -> dict:
     prompt_rag_fusion = ChatPromptTemplate.from_template(query_generation_template)
     generate_queries = (
         prompt_rag_fusion
-        | ChatOpenAI(model='gpt-4o-mini-search-preview')
+        | ChatOpenAI(model='o1-mini')
         | StrOutputParser()
         | (lambda x: x.split("\n"))
     )
@@ -501,7 +501,7 @@ def rag_fusion_fiche_societe_to_word_websearch(question: str) -> dict:
     print(f"[LOG] Documents fusionnés : {len(reranked_docs)} documents rerankés.")
     
     # Pour alléger le contexte, ne conserver que les 10 premiers documents
-    selected_docs = reranked_docs[:10]
+    selected_docs = reranked_docs[:50]
     context = "\n\n".join([doc.page_content for doc, _ in selected_docs])
     
     # Prompt final avec instruction explicite sur l'utilisation du contexte
