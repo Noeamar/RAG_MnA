@@ -1,13 +1,13 @@
 import streamlit as st
 from poc_RAG import (
-    rag_fusion, 
     rag_fusion_actualites, 
     rag_fusion_fonds, 
     rag_fusion_fiche_societe_to_word,  
     rag_fusion_multiples_transactions_comparables,
     download_file_from_github,
     add_watermark_to_pdf,
-    generate_fiche_societe
+    generate_fiche_societe,
+    rag_fusion_fiche_societe_to_word_websearch
 )
 
 from langchain.document_loaders import WebBaseLoader
@@ -110,50 +110,84 @@ if st.session_state["registered"] and st.session_state["ready_to_access"]:
                     st.error(f"An error occurred while generating the answer: {e}")
     
     elif menu == "Company profile":
-            st.subheader("Générer une fiche entreprise à partir de la réponse du LLM")
-            # Saisie manuelle du nom de l'entreprise
-            company_name = st.text_input("Entrez le nom de l'entreprise :", key="company_name_input")
-            if st.button("Générer la fiche entreprise"):
-                if company_name.strip() == "":
-                    st.error("Veuillez entrer le nom de l'entreprise.")
-                else:
-                    with st.spinner("Génération de la fiche entreprise en cours..."):
-                        try:
-                            # Formuler la question pour obtenir les informations de l'entreprise
-                            company_question = f"Fournis-moi une fiche détaillée pour l'entreprise {company_name}."
-                            
-                            # Interroger le LLM via la fonction RAG dédiée pour fiche société
-                            company_data = rag_fusion_fiche_societe_to_word(company_question)
-                            
-                            # Chemin local du template Word et téléchargement depuis GitHub si nécessaire
-                            local_template_path = "./Data/Template - Fiche société.docx"
-                            github_template_path = "Data/Template - Fiche société.docx"  # chemin relatif dans votre repo GitHub
-                            if not os.path.exists(local_template_path):
-                                download_file_from_github(github_template_path, local_template_path)
-                                st.info("Template téléchargé depuis GitHub.")
-                            
-                            # Chemin de sortie (utilisation d'un chemin absolu pour être sûr que ça fonctionne partout)
-                            output_dir = os.path.join(os.getcwd(), "Data", "Fiches")
-                            os.makedirs(output_dir, exist_ok=True)
-                            output_path = os.path.join(output_dir, f"{company_name}_fiche_societe.docx")
-                            
-                            # Remplir le template avec les données du LLM
-                            generate_fiche_societe(company_data, local_template_path, output_path)
-                            
-                            st.success("Fiche entreprise générée avec succès.")
-                            
-                            # Permettre le téléchargement de la fiche générée
-                            with open(output_path, "rb") as f:
-                                doc_bytes = f.read()
-                            st.download_button(
-                                label="Télécharger la fiche entreprise",
-                                data=doc_bytes,
-                                file_name=f"{company_name}_fiche_societe.docx",
-                                mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-                            )
-                        except Exception as e:
-                            st.error(f"Une erreur est survenue lors de la génération de la fiche entreprise : {e}")
-    
+        st.subheader("Générer une fiche entreprise à partir de la réponse du LLM")
+        # Saisie manuelle du nom de l'entreprise
+        company_name = st.text_input("Entrez le nom de l'entreprise :", key="company_name_input")
+
+        # Bouton 1 : Génération standard
+        if st.button("Générer la fiche entreprise"):
+            if company_name.strip() == "":
+                st.error("Veuillez entrer le nom de l'entreprise.")
+            else:
+                with st.spinner("Génération de la fiche entreprise en cours..."):
+                    try:
+                        company_question = f"Fournis-moi une fiche détaillée pour l'entreprise {company_name}."
+                        
+                        # Interroger le LLM via la fonction RAG dédiée (standard)
+                        company_data = rag_fusion_fiche_societe_to_word(company_question)
+                        
+                        local_template_path = "./Data/Template - Fiche société.docx"
+                        github_template_path = "Data/Template - Fiche société.docx"
+                        if not os.path.exists(local_template_path):
+                            download_file_from_github(github_template_path, local_template_path)
+                            st.info("Template téléchargé depuis GitHub.")
+                        
+                        output_dir = os.path.join(os.getcwd(), "Data", "Fiches")
+                        os.makedirs(output_dir, exist_ok=True)
+                        output_path = os.path.join(output_dir, f"{company_name}_fiche_societe.docx")
+                        
+                        generate_fiche_societe(company_data, local_template_path, output_path)
+                        
+                        st.success("Fiche entreprise générée avec succès.")
+                        
+                        with open(output_path, "rb") as f:
+                            doc_bytes = f.read()
+                        st.download_button(
+                            label="Télécharger la fiche entreprise",
+                            data=doc_bytes,
+                            file_name=f"{company_name}_fiche_societe.docx",
+                            mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                        )
+                    except Exception as e:
+                        st.error(f"Une erreur est survenue lors de la génération de la fiche entreprise : {e}")
+
+        # Bouton 2 : Génération avec recherche Web
+        if st.button("Générer la fiche entreprise (Recherche Web)"):
+            if company_name.strip() == "":
+                st.error("Veuillez entrer le nom de l'entreprise.")
+            else:
+                with st.spinner("Génération de la fiche entreprise (avec recherche Web) en cours..."):
+                    try:
+                        company_question = f"Fournis-moi une fiche détaillée pour l'entreprise {company_name}."
+                        
+                        # Interroger le LLM via la fonction RAG avec recherche web
+                        company_data = rag_fusion_fiche_societe_to_word_websearch(company_question)
+                        
+                        local_template_path = "./Data/Template - Fiche société.docx"
+                        github_template_path = "Data/Template - Fiche société.docx"
+                        if not os.path.exists(local_template_path):
+                            download_file_from_github(github_template_path, local_template_path)
+                            st.info("Template téléchargé depuis GitHub.")
+                        
+                        output_dir = os.path.join(os.getcwd(), "Data", "Fiches")
+                        os.makedirs(output_dir, exist_ok=True)
+                        output_path = os.path.join(output_dir, f"{company_name}_fiche_societe.docx")
+                        
+                        generate_fiche_societe(company_data, local_template_path, output_path)
+                        
+                        st.success("Fiche entreprise (Recherche Web) générée avec succès.")
+                        
+                        with open(output_path, "rb") as f:
+                            doc_bytes = f.read()
+                        st.download_button(
+                            label="Télécharger la fiche entreprise (Recherche Web)",
+                            data=doc_bytes,
+                            file_name=f"{company_name}_fiche_societe.docx",
+                            mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                        )
+                    except Exception as e:
+                        st.error(f"Une erreur est survenue lors de la génération de la fiche entreprise (Recherche Web) : {e}")
+
     elif menu == "Funds":
         st.header("Query the Funds Database")
         st.write("Ask a question here, and the AI will query the dedicated funds database.")

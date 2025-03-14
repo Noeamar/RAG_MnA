@@ -140,9 +140,9 @@ def rag_fusion_actualites(question: str) -> str:
     
     # Définissez ici la liste des dossiers batch contenant les index FAISS
     batch_dirs = [
-        "./Data/FAISS_index_actualites_batch_1",
-        "./Data/FAISS_index_actualites_batch_2",
-        "./Data/FAISS_index_actualites_batch_3"
+        "./Data/FAISS_index_actualites_NLP_400_0_batch_1",
+        "./Data/FAISS_index_actualites_NLP_400_0_batch_2",
+        "./Data/FAISS_index_actualites_NLP_400_0_batch_3"
     ]
     
     # Vous pouvez ajouter ici du code pour télécharger chaque batch depuis GitHub s'il manque
@@ -161,19 +161,16 @@ def rag_fusion_actualites(question: str) -> str:
         # Utilisation du retriever en mode "similarity_score_threshold"
         retriever = vectorstore.as_retriever(
             search_type="similarity_score_threshold",
-            search_kwargs={"score_threshold": 0.7, "k": 10}
+            search_kwargs={"score_threshold": 0.6, "k": 10}
         )
         retrievers.append(retriever)
     
     print("[LOG] Tous les index batch sont chargés.")
     
     # Génération des requêtes via le prompt
-    query_generation_template = (
-        "You are a knowledgeable M&A news analyst. Your role is to generate multiple targeted search queries "
-        "to retrieve the most relevant and recent M&A news from a specialized news database.\n\n"
-        "Given the user's question: {question}\n\n"
-        "Generate exactly 4 specific and focused queries related to recent M&A news, announcements, deals, or trends.\n"
-        "Output 4 queries:"
+    query_generation_template = ("You are a helpful assistant that generates multiple search queries based on a single input query. \n"
+    "Generate multiple search queries related to: {question} \n"
+    "Output (3 queries):"
     )
     prompt_rag_fusion = ChatPromptTemplate.from_template(query_generation_template)
     generate_queries = (
@@ -219,13 +216,11 @@ def rag_fusion_actualites(question: str) -> str:
     # Génération de la réponse finale avec le prompt de réponse
     answer_template = (
         "You are a financial journalist and M&A expert focusing on recent news. Using the following context "
-        "extracted from M&A news sources, answer the user's question factually and succinctly. Highlight "
-        "relevant and recent deals, events, or trends. Always present the information chronologically. Do not invent information. "
+        "extracted from M&A news sources, answer the user's question."
+        "Always present the information chronologically."
         "Always give your source. It's always given in the title of the file the information is extracted from. It's either Arx or CFNews.\n\n"
         "Context:\n{context}\n\n"
         "Question: {question}\n\n"
-        "If you are asked to do a market sheet or a company profile, structure the answer based on the context. "
-        "Otherwise, provide a clear, fact-based answer."
     )
     answer_prompt = ChatPromptTemplate.from_template(answer_template)
     llm = ChatOpenAI(model='o1-mini')
@@ -308,44 +303,71 @@ def rag_fusion_fiche_societe_to_word(question: str) -> dict:
     Interroge la base d'actualités M&A via RAG et retourne une réponse structurée pour remplir un template Word.
     """
     print("[LOG] Démarrage de rag_fusion_fiche_societe_to_word pour la question :", question)
-    local_index_dir = "./Data/FAISS_index_actualites"
-    local_index_file = os.path.join(local_index_dir, "index.faiss")
-    github_file_path = "FAISS_index_actualites/index.faiss"
-    if not os.path.exists(local_index_file):
-        download_file_from_github(github_file_path, local_index_file)
-    else:
-        print(f"[LOG] Fichier index actualités déjà présent : {local_index_file}")
+    # Définissez ici la liste des dossiers batch contenant les index FAISS
+    batch_dirs = [
+        "./Data/FAISS_index_actualites_NLP_400_0_batch_1",
+        "./Data/FAISS_index_actualites_NLP_400_0_batch_2",
+        "./Data/FAISS_index_actualites_NLP_400_0_batch_3"
+    ]
+    
+    # Vous pouvez ajouter ici du code pour télécharger chaque batch depuis GitHub s'il manque
+    for batch in batch_dirs:
+        if not os.path.exists(batch):
+            print(f"[LOG] Attention, le dossier {batch} n'existe pas.")
+            # download_file_from_github(...)  # Vous pouvez adapter cette partie si besoin.
     
     embedding = OpenAIEmbeddings()
-    vectorstore = FAISS.load_local(local_index_dir, embeddings=embedding, allow_dangerous_deserialization=True)
-    print("[LOG] Index actualités chargé pour fiche société.")
-    retriever = vectorstore.as_retriever(search_type="mmr", search_kwargs={"k": 10, "score_threshold": 0.01})
+    retrievers = []
     
-    query_generation_template = """You are a knowledgeable M&A news analyst. Given the user's question:
-{question}
-
-Generate five alternative search queries to retrieve the most relevant M&A news.
-Provide these queries separated by newlines.
-"""
+    # Charger chaque index FAISS et créer un retriever avec le nouveau paramétrage
+    for batch in batch_dirs:
+        print(f"[LOG] Chargement de l'index depuis {batch}")
+        vectorstore = FAISS.load_local(batch, embeddings=embedding, allow_dangerous_deserialization=True)
+        # Utilisation du retriever en mode "similarity_score_threshold"
+        retriever = vectorstore.as_retriever(
+            search_type="similarity_score_threshold",
+            search_kwargs={"score_threshold": 0.6, "k": 10}
+        )
+        retrievers.append(retriever)
+    
+    print("[LOG] Tous les index batch sont chargés.")
+    
+    # Génération des requêtes via le prompt
+    query_generation_template = ("You are a helpful assistant that generates multiple search queries based on a single input query. \n"
+    "Generate multiple search queries related to: {question} \n"
+    "Output (3 queries):"
+    )
     prompt_rag_fusion = ChatPromptTemplate.from_template(query_generation_template)
-    generate_queries = (prompt_rag_fusion
-                        | ChatOpenAI(model='o1-mini')
-                        | StrOutputParser()
-                        | (lambda x: x.split("\n")))
+    generate_queries = (
+        prompt_rag_fusion
+        | ChatOpenAI(model='o1-mini')
+        | StrOutputParser()
+        | (lambda x: x.split("\n"))
+    )
     queries = generate_queries.invoke({"question": question})
     print("[LOG] Requêtes générées :", queries)
     
-    results = [retriever.invoke(q) for q in queries]
-    print("[LOG] Documents récupérés :", results)
+    # Pour chaque requête, interroger tous les retrievers et combiner les résultats
+    all_results = []
+    for q in queries:
+        query_results = []
+        for retriever in retrievers:
+            # Utilisez .invoke(q) pour récupérer les documents pour la requête q
+            docs = retriever.invoke(q)
+            query_results.extend(docs)
+        all_results.append(query_results)
+    print("[LOG] Documents récupérés pour chaque requête.")
     
+    # Fusion des résultats avec Reciprocal Rank Fusion (RRF)
     fused_scores = {}
-    for docs in results:
+    for docs in all_results:
         for rank, doc in enumerate(docs):
             doc_dict = {"page_content": doc.page_content, "metadata": doc.metadata}
             doc_str = json.dumps(doc_dict)
             if doc_str not in fused_scores:
                 fused_scores[doc_str] = 0
-            fused_scores[doc_str] += 1 / (rank + 60)
+            fused_scores[doc_str] += 1 / (rank + 100)
+    
     reranked_docs = [
         (Document(page_content=d["page_content"], metadata=d["metadata"]), score)
         for d_str, score in sorted(fused_scores.items(), key=lambda x: x[1], reverse=True)
@@ -362,13 +384,15 @@ Context:
 
 Question: {question}
 
+Rewrite everything you are given in the context so that there are nice sentences.
+
 Respond ONLY within the following structure (no extra text):
 
 {{
     "nom_societe": "Provide the company name if found",
     "description_activite": "Provide a detailed description of the company's activities (5-10 lines), using clear and concise language.",
     "chiffres_cles": "Include key metrics such as revenue, employee count, or founding date, summarized if needed.",
-    "clients_par_secteur": "List the main clients by sector in a synthesized manner",
+    "clients_par_secteur": "List the main clients by sector and give their name.",
     "implantation_positionnement": "List cities or countries where the company is located",
     "elements_financiers": "Summarize the financial growth over the past 3 years in a concise manner",
     "president": "Name of the president",
@@ -380,7 +404,7 @@ Respond ONLY within the following structure (no extra text):
     "actualites_presse": "Present with maximum details and a clear language recent press news in a clear format",
     "equity_story": "Present with maximum details and a clear language major equity events and investments",
     "creation": "Present with maximum details and a clear language creation details or year of founding",
-    "acquisition": "Present with maximum details and a clear language key acquisitions, including dates and a descriptions"
+    "acquisitions": "Present with maximum details and a clear language all acquisitions, including dates and a descriptions"
 }}
 """
     answer_prompt = ChatPromptTemplate.from_template(answer_template)
@@ -402,7 +426,313 @@ Respond ONLY within the following structure (no extra text):
 
     return answer_dict
 
-from docxtpl import DocxTemplate
+def rag_fusion_fiche_societe_to_word_websearch(question: str) -> dict:
+    print("[LOG] Démarrage de rag_fusion_fiche_societe_to_word_websearch pour la question :", question)
+    
+    # Liste des dossiers batch contenant les index FAISS
+    batch_dirs = [
+        "./Data/FAISS_index_actualites_NLP_400_0_batch_1",
+        "./Data/FAISS_index_actualites_NLP_400_0_batch_2",
+        "./Data/FAISS_index_actualites_NLP_400_0_batch_3"
+    ]
+    
+    # Vérifier que chaque batch existe (téléchargement depuis GitHub si nécessaire)
+    for batch in batch_dirs:
+        if not os.path.exists(batch):
+            print(f"[LOG] Attention, le dossier {batch} n'existe pas.")
+            # download_file_from_github(...)  # À implémenter si besoin.
+    
+    embedding = OpenAIEmbeddings()
+    retrievers = []
+    
+    # Charger chaque index FAISS et créer un retriever en mode "similarity_score_threshold"
+    for batch in batch_dirs:
+        print(f"[LOG] Chargement de l'index depuis {batch}")
+        vectorstore = FAISS.load_local(batch, embeddings=embedding, allow_dangerous_deserialization=True)
+        retriever = vectorstore.as_retriever(
+            search_type="similarity_score_threshold",
+            search_kwargs={"score_threshold": 0.6, "k": 10}
+        )
+        retrievers.append(retriever)
+    
+    print("[LOG] Tous les index batch sont chargés.")
+    
+    # Génération des requêtes via le prompt
+    query_generation_template = (
+        "You are a helpful assistant that generates multiple search queries based on a single input query. \n"
+        "Generate multiple search queries related to: {question} \n"
+        "Output (3 queries):"
+    )
+    prompt_rag_fusion = ChatPromptTemplate.from_template(query_generation_template)
+    generate_queries = (
+        prompt_rag_fusion
+        | ChatOpenAI(model='gpt-4o-mini-search-preview')
+        | StrOutputParser()
+        | (lambda x: x.split("\n"))
+    )
+    queries = generate_queries.invoke({"question": question})
+    print("[LOG] Requêtes générées :", queries)
+    
+    # Pour chaque requête, interroger tous les retrievers et combiner les résultats
+    all_results = []
+    for q in queries:
+        query_results = []
+        for retriever in retrievers:
+            docs = retriever.invoke(q)
+            query_results.extend(docs)
+        all_results.append(query_results)
+    print("[LOG] Documents récupérés pour chaque requête.")
+    
+    # Fusionner les résultats avec Reciprocal Rank Fusion (RRF)
+    fused_scores = {}
+    for docs in all_results:
+        for rank, doc in enumerate(docs):
+            doc_dict = {"page_content": doc.page_content, "metadata": doc.metadata}
+            doc_str = json.dumps(doc_dict)
+            if doc_str not in fused_scores:
+                fused_scores[doc_str] = 0
+            fused_scores[doc_str] += 1 / (rank + 100)
+    
+    reranked_docs = [
+        (Document(page_content=d["page_content"], metadata=d["metadata"]), score)
+        for d_str, score in sorted(fused_scores.items(), key=lambda x: x[1], reverse=True)
+        for d in [json.loads(d_str)]
+    ]
+    print(f"[LOG] Documents fusionnés : {len(reranked_docs)} documents rerankés.")
+    
+    # Pour alléger le contexte, ne conserver que les 10 premiers documents
+    selected_docs = reranked_docs[:10]
+    context = "\n\n".join([doc.page_content for doc, _ in selected_docs])
+    
+    # Prompt final avec instruction explicite sur l'utilisation du contexte
+    answer_template = """You are a financial journalist and M&A expert. You MUST answer in JSON format only, strictly matching the provided structure.
+
+Use primarily the context provided below (abridged) to construct your answer. If the context lacks certain details, supplement your answer with the most relevant results from your internet search.
+
+Context (abridged):
+{context}
+
+Question: {question}.
+
+Respond ONLY within the following JSON structure (no extra text):
+
+{{
+    "nom_societe": "Provide the company name if found",
+    "description_activite": "Provide a detailed description of the company's activities (5-10 lines), using clear and concise language.",
+    "chiffres_cles": "Include key metrics such as revenue, employee count, or founding date, summarized if needed.",
+    "clients_par_secteur": "List the main clients by sector and give their names.",
+    "implantation_positionnement": "List cities or countries where the company is located.",
+    "elements_financiers": "Summarize the financial growth over the past 3 years in a concise manner.",
+    "president": "Name of the president",
+    "daf": "Name of the financial director",
+    "actionnaire": "Provide a summarized list of key shareholders or investment funds, with the most important ones highlighted.",
+    "actionnaire_pourcentage": "Shareholder distribution percentages if available.",
+    "creanciers_type": "List types of creditors concisely.",
+    "creanciers_commentaires": "Provide a brief summary of the creditors' comments.",
+    "actualites_presse": "Present recent press news with maximum details and clear language.",
+    "equity_story": "Present major equity events and investments (e.g., LBO, MBO) with maximum details and clear language.",
+    "creation": "Present the company's creation details or founding year with maximum details and clear language.",
+    "acquisitions": "Present all key acquisitions, build-ups, mergers with dates and descriptions with maximum details and clear language."
+}}
+"""
+    answer_prompt = ChatPromptTemplate.from_template(answer_template)
+    llm = ChatOpenAI(model='gpt-4o-mini-search-preview', model_kwargs={"web_search_options": {}})
+    final_input = {"context": context, "question": question}
+    
+    max_attempts = 3
+    answer_dict = {}
+    for attempt in range(max_attempts):
+        print(f"[LOG] Tentative {attempt+1} pour générer la réponse.")
+        answer = (answer_prompt | llm | StrOutputParser()).invoke(final_input)
+        raw_answer = answer.strip()
+        print(f"[DEBUG] Réponse brute générée (tentative {attempt+1}) : {raw_answer}")
+        if raw_answer.startswith("```json"):
+            raw_answer = raw_answer[len("```json"):].strip()
+        if raw_answer.endswith("```"):
+            raw_answer = raw_answer[:-3].strip()
+        try:
+            answer_dict = json.loads(raw_answer)
+            print("[LOG] Réponse JSON générée avec succès.")
+            break
+        except json.JSONDecodeError as e:
+            print("[LOG] Erreur lors du parsing JSON de la réponse du LLM:", e)
+            if attempt == max_attempts - 1:
+                print("[LOG] Nombre maximum de tentatives atteint, aucune réponse valide obtenue.")
+                answer_dict = {}
+            else:
+                sleep(2)
+    
+    return answer_dict
+
+# def internet_search(query: str) -> list:
+#     """
+#     Effectue une recherche Internet avec le modèle gpt-4o-mini-search-preview
+#     et renvoie directement les 50 meilleurs résultats sous forme de Documents.
+#     """
+#     search_prompt = (
+#         f"Search the internet for the following query and provide the top 50 results "
+#         f"in JSON format as a list of objects with keys 'title' and 'snippet'. It is imperative that the results have this form ! : {query}"
+#     )
+#     llm_internet = ChatOpenAI(model='gpt-4o-mini-search-preview', model_kwargs={"web_search_options": {}})
+#     response = llm_internet.invoke(search_prompt)
+#     # Convertir la réponse en chaîne si nécessaire
+#     if not isinstance(response, str):
+#         response = str(response)
+#     try:
+#         results = json.loads(response)
+#         docs = []
+#         for item in results:
+#             content = f"Title: {item.get('title', '')}\nSnippet: {item.get('snippet', '')}"
+#             docs.append(Document(page_content=content, metadata={}))
+#         return docs[:50]
+#     except Exception as e:
+#         print("[LOG] Erreur lors du parsing des résultats Internet pour la requête:", query, e)
+#         return []
+
+
+# def rag_fusion_fiche_societe_to_word_websearch(question: str) -> dict:
+#     print("[LOG] Démarrage de rag_fusion_fiche_societe_to_word_websearch pour la question :", question)
+    
+#     # --- Définition des dossiers batch locaux ---
+#     batch_dirs = [
+#         "./Data/FAISS_index_actualites_NLP_400_0_batch_1",
+#         "./Data/FAISS_index_actualites_NLP_400_0_batch_2",
+#         "./Data/FAISS_index_actualites_NLP_400_0_batch_3"
+#     ]
+#     for batch in batch_dirs:
+#         if not os.path.exists(batch):
+#             print(f"[LOG] Attention, le dossier {batch} n'existe pas.")
+#             # download_file_from_github(...)  # À adapter si nécessaire.
+    
+#     # --- Multi Query Generation ---
+#     query_generation_template = (
+#         "Vous êtes un expert en actualités M&A. À partir de la question suivante : {question}\n"
+#         "Générez exactement 3 requêtes alternatives spécifiques pour rechercher des actualités M&A pertinentes.\n"
+#         "Fournissez ces 3 requêtes séparées par des sauts de ligne :"
+#     )
+#     prompt_query = ChatPromptTemplate.from_template(query_generation_template)
+#     generate_queries_chain = (
+#         prompt_query
+#         | ChatOpenAI(model='o1-mini')
+#         | StrOutputParser()
+#         | (lambda x: x.split("\n"))
+#     )
+#     queries = generate_queries_chain.invoke({"question": question})
+#     # Nettoyer la liste pour supprimer les marqueurs Markdown et les lignes vides
+#     queries = [q.strip() for q in queries if q.strip() and q.strip() != "```"]
+#     print("[LOG] Requêtes nettoyées :", queries)
+    
+#     # --- Recherche locale sur les 3 batchs ---
+#     local_results = []
+#     embedding = OpenAIEmbeddings()
+#     for batch in batch_dirs:
+#         print(f"[LOG] Chargement de l'index depuis {batch}")
+#         vectorstore = FAISS.load_local(batch, embeddings=embedding, allow_dangerous_deserialization=True)
+#         retriever = vectorstore.as_retriever(
+#             search_type="similarity_score_threshold",
+#             search_kwargs={"score_threshold": 0.6, "k": 15}
+#         )
+#         for q in queries:
+#             results = retriever.invoke(q)
+#             local_results.extend(results)
+#     print(f"[LOG] Recherche locale totale : {len(local_results)} documents récupérés.")
+    
+#     # --- Fusion RRF sur les résultats locaux ---
+#     fused_scores = {}
+#     for rank, doc in enumerate(local_results):
+#         doc_dict = {"page_content": doc.page_content, "metadata": doc.metadata}
+#         doc_str = json.dumps(doc_dict)
+#         if doc_str not in fused_scores:
+#             fused_scores[doc_str] = 0
+#         fused_scores[doc_str] += 1 / (rank + 60)
+#     reranked_local_docs = [
+#         (Document(page_content=d["page_content"], metadata=d["metadata"]), score)
+#         for d_str, score in sorted(fused_scores.items(), key=lambda x: x[1], reverse=True)
+#         for d in [json.loads(d_str)]
+#     ]
+#     print(f"[LOG] Documents locaux fusionnés (RRF) : {len(reranked_local_docs)} documents rerankés.")
+    
+#     # --- Recherche Internet (directe) ---
+#     internet_results = []
+#     print(queries)
+#     for q in queries:
+#         print(f"[LOG] Recherche Internet pour la requête : {q}")
+#         docs = internet_search(q)
+#         print(f"[LOG] {len(docs)} documents trouvés sur Internet.")
+#         internet_results.extend(docs)
+#     internet_results = internet_results[:50]
+#     print(f"[LOG] Recherche Internet : {len(internet_results)} documents récupérés.")
+    
+#     # --- Combinaison des résultats ---
+#     combined_results = [doc for doc, _ in reranked_local_docs] + internet_results
+#     print(f"[LOG] Total documents combinés (locaux + Internet) : {len(combined_results)} documents.")
+    
+#     # --- Construction du contexte final ---
+#     context = "\n\n".join([doc.page_content for doc in combined_results])
+    
+#     # --- Prompt final ---
+#     # Utilisez le template fourni
+#     answer_template = """You are a financial journalist and M&A expert. You MUST answer in JSON format only, strictly matching the provided structure.
+
+# Context:
+# {context}
+
+# Question: {question}
+
+# Rewrite everything you are given in the context so that there are nice sentences.
+
+# Respond ONLY within the following structure (no extra text):
+
+# {{
+#     "nom_societe": "Provide the company name if found",
+#     "description_activite": "Provide a detailed description of the company's activities (5-10 lines), using clear and concise language.",
+#     "chiffres_cles": "Include key metrics such as revenue, employee count, or founding date, summarized if needed.",
+#     "clients_par_secteur": "List the main clients by sector and give their name.",
+#     "implantation_positionnement": "List cities or countries where the company is located",
+#     "elements_financiers": "Summarize the financial growth over the past 3 years in a concise manner",
+#     "president": "Name of the president",
+#     "daf": "Name of the financial director",
+#     "actionnaire": "Provide a summarized list of key shareholders or investment funds, with the most important ones highlighted",
+#     "actionnaire_pourcentage": "Shareholder distribution percentages if available",
+#     "creanciers_type": "List types of creditors concisely",
+#     "creanciers_commentaires": "Provide a brief summary of the creditors' comments",
+#     "actualites_presse": "Present with maximum details and a clear language recent press news in a clear format",
+#     "equity_story": "Present with maximum details and a clear language major equity events and investments",
+#     "creation": "Present with maximum details and a clear language creation details or year of founding",
+#     "acquisitions": "Present with maximum details and a clear language all acquisitions, including dates and a descriptions"
+# }}
+# """
+#     answer_prompt = ChatPromptTemplate.from_template(answer_template)
+#     formatted_prompt = answer_prompt.format(context=context, question=question)
+    
+#     llm_final = ChatOpenAI(model='o1-mini')
+    
+#     max_attempts = 3
+#     answer_dict = {}
+#     for attempt in range(max_attempts):
+#         print(f"[LOG] Tentative {attempt+1} pour générer la réponse finale.")
+#         answer = (llm_final | StrOutputParser()).invoke(formatted_prompt)
+#         raw_answer = answer.strip()
+#         print(f"[DEBUG] Réponse brute générée (tentative {attempt+1}) : {raw_answer}")
+#         if raw_answer.startswith("```json"):
+#             raw_answer = raw_answer[len("```json"):].strip()
+#         if raw_answer.endswith("```"):
+#             raw_answer = raw_answer[:-3].strip()
+#         try:
+#             answer_dict = json.loads(raw_answer)
+#             print("[LOG] Réponse JSON générée avec succès.")
+#             break
+#         except json.JSONDecodeError as e:
+#             print("[LOG] Erreur lors du parsing JSON de la réponse du LLM:", e)
+#             if attempt == max_attempts - 1:
+#                 print("[LOG] Nombre maximum de tentatives atteint, aucune réponse valide obtenue.")
+#                 answer_dict = {}
+#             else:
+#                 sleep(2)
+    
+#     return answer_dict
+
+
 
 def generate_fiche_societe(company_data: dict, template_path: str, output_path: str):
     """
