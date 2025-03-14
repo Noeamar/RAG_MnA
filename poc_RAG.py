@@ -137,45 +137,75 @@ Provide a clear, fact-based answer focusing on the M&A domain.
 
 def rag_fusion_actualites(question: str) -> str:
     print("[LOG] Démarrage de rag_fusion_actualites pour la question :", question)
-    local_index_dir = "./Data/FAISS_index_actualites"
-    local_index_file = os.path.join(local_index_dir, "index.faiss")
-    github_file_path = "FAISS_index_actualites/index.faiss"
-    if not os.path.exists(local_index_file):
-        download_file_from_github(github_file_path, local_index_file)
-    else:
-        print(f"[LOG] Fichier index actualités déjà présent : {local_index_file}")
+    
+    # Définissez ici la liste des dossiers batch contenant les index FAISS
+    batch_dirs = [
+        "./Data/FAISS_index_actualites_batch_1",
+        "./Data/FAISS_index_actualites_batch_2",
+        "./Data/FAISS_index_actualites_batch_3"
+    ]
+    
+    # Vous pouvez ajouter ici du code pour télécharger chaque batch depuis GitHub s'il manque
+    for batch in batch_dirs:
+        if not os.path.exists(batch):
+            print(f"[LOG] Attention, le dossier {batch} n'existe pas.")
+            # download_file_from_github(...)  # Vous pouvez adapter cette partie si besoin.
     
     embedding = OpenAIEmbeddings()
-    vectorstore = FAISS.load_local(local_index_dir, embeddings=embedding, allow_dangerous_deserialization=True)
-    print("[LOG] Index actualités chargé.")
-    retriever = vectorstore.as_retriever(search_type="mmr", search_kwargs={"fectch_k": 20, "k": 20, "score_threshold": 0.01, "lambda_mult": 0.25})
+    retrievers = []
     
-    query_generation_template = """You are a knowledgeable M&A news analyst. Your role is to generate multiple targeted search queries to retrieve the most relevant and recent M&A news from a specialized news database.
-
-Given the user's question: {question}
-
-Generate exactly 4 specific and focused queries related to recent M&A news, announcements, deals, or trends.
-Output 4 queries:
-"""
+    # Charger chaque index FAISS et créer un retriever avec le nouveau paramétrage
+    for batch in batch_dirs:
+        print(f"[LOG] Chargement de l'index depuis {batch}")
+        vectorstore = FAISS.load_local(batch, embeddings=embedding, allow_dangerous_deserialization=True)
+        # Utilisation du retriever en mode "similarity_score_threshold"
+        retriever = vectorstore.as_retriever(
+            search_type="similarity_score_threshold",
+            search_kwargs={"score_threshold": 0.7, "k": 10}
+        )
+        retrievers.append(retriever)
+    
+    print("[LOG] Tous les index batch sont chargés.")
+    
+    # Génération des requêtes via le prompt
+    query_generation_template = (
+        "You are a knowledgeable M&A news analyst. Your role is to generate multiple targeted search queries "
+        "to retrieve the most relevant and recent M&A news from a specialized news database.\n\n"
+        "Given the user's question: {question}\n\n"
+        "Generate exactly 4 specific and focused queries related to recent M&A news, announcements, deals, or trends.\n"
+        "Output 4 queries:"
+    )
     prompt_rag_fusion = ChatPromptTemplate.from_template(query_generation_template)
-    generate_queries = (prompt_rag_fusion
-                        | ChatOpenAI(model='o1-mini')
-                        | StrOutputParser()
-                        | (lambda x: x.split("\n")))
+    generate_queries = (
+        prompt_rag_fusion
+        | ChatOpenAI(model='o1-mini')
+        | StrOutputParser()
+        | (lambda x: x.split("\n"))
+    )
     queries = generate_queries.invoke({"question": question})
     print("[LOG] Requêtes générées :", queries)
     
-    results = [retriever.invoke(q) for q in queries]
-    print("[LOG] Documents récupérés :", results)
+    # Pour chaque requête, interroger tous les retrievers et combiner les résultats
+    all_results = []
+    for q in queries:
+        query_results = []
+        for retriever in retrievers:
+            # Utilisez .invoke(q) pour récupérer les documents pour la requête q
+            docs = retriever.invoke(q)
+            query_results.extend(docs)
+        all_results.append(query_results)
+    print("[LOG] Documents récupérés pour chaque requête.")
     
+    # Fusion des résultats avec Reciprocal Rank Fusion (RRF)
     fused_scores = {}
-    for docs in results:
+    for docs in all_results:
         for rank, doc in enumerate(docs):
             doc_dict = {"page_content": doc.page_content, "metadata": doc.metadata}
             doc_str = json.dumps(doc_dict)
             if doc_str not in fused_scores:
                 fused_scores[doc_str] = 0
-            fused_scores[doc_str] += 1 / (rank + 60)
+            fused_scores[doc_str] += 1 / (rank + 100)
+    
     reranked_docs = [
         (Document(page_content=d["page_content"], metadata=d["metadata"]), score)
         for d_str, score in sorted(fused_scores.items(), key=lambda x: x[1], reverse=True)
@@ -183,26 +213,29 @@ Output 4 queries:
     ]
     print(f"[LOG] Documents fusionnés : {len(reranked_docs)} documents rerankés.")
     
+    # Construire le contexte à partir des documents rerankés
     context = "\n\n".join([doc.page_content for doc, _ in reranked_docs])
     
-    answer_template = """You are a financial journalist and M&A expert focusing on recent news. Using the following context extracted from M&A news sources, answer the user's question factually and succinctly. Highlight relevant and recent deals, events, or trends. Always present the information chronologically. Do not invent information. Always give your source. It's always given in the title of the file the information is extracted from. It's either Arx or CFNews.
-
-Context:
-{context}
-
-Question: {question}
-
-If you are asked to do a market sheet or a company profile, structure the answer based on the context.
-Otherwise, provide a clear, fact-based answer.
-"""
+    # Génération de la réponse finale avec le prompt de réponse
+    answer_template = (
+        "You are a financial journalist and M&A expert focusing on recent news. Using the following context "
+        "extracted from M&A news sources, answer the user's question factually and succinctly. Highlight "
+        "relevant and recent deals, events, or trends. Always present the information chronologically. Do not invent information. "
+        "Always give your source. It's always given in the title of the file the information is extracted from. It's either Arx or CFNews.\n\n"
+        "Context:\n{context}\n\n"
+        "Question: {question}\n\n"
+        "If you are asked to do a market sheet or a company profile, structure the answer based on the context. "
+        "Otherwise, provide a clear, fact-based answer."
+    )
     answer_prompt = ChatPromptTemplate.from_template(answer_template)
     llm = ChatOpenAI(model='o1-mini')
     final_input = {"context": context, "question": question}
     answer = (answer_prompt | llm | StrOutputParser()).invoke(final_input)
     
-    print("[LOG] Réponse actualités générée.")
+    print("[LOG] Réponse générée.")
     return answer
 
+    
 def rag_fusion_fonds(question: str) -> str:
     print("[LOG] Démarrage de rag_fusion_fonds pour la question :", question)
     local_index_dir = "./Data/FAISS_index_fonds"

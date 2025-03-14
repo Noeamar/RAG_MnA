@@ -28,7 +28,7 @@
       "file_name": "pe_firms_combined_Arx.csv",
       "type": "CSV",
       "description": "Liste des fonds d'investissements avec les informations de base comme les secteurs, les tickets (combien ils investissent en moyenne) pour chacune de leurs branches... Ces informations viennent de Arx.",
-      "source": "C:\\Users\\namar\\Documents\\poc_RAG\\Projet_test\\RAG_M-A\\Data\\pe_firms_cleaned.csv",
+      "source": "C:\\Users\\namar\\Documents\\poc_RAG\\Projet_test\\RAG_M-A\\Data\\pe_firms_combined_Arx.csv",
       "last_modified": "2024-12-16",
       "tags": ["fonds d'investissements", "secteurs", "tickets"]
       },
@@ -36,7 +36,7 @@
       "file_name": "deals_data_cleaned_CFNews.csv",
       "type": "CSV",
       "description": "Collection d'articles et de nouvelles liées aux entreprises analysées et au marché de la finance d'entreprise. Ces informations viennet de CFNews.",
-      "source": "C:\\Users\\namar\\Documents\\poc_RAG\\Projet_test\\RAG_M-A\\Data\\pe_firms_cleaned.csv",
+      "source": "C:\\Users\\namar\\Documents\\poc_RAG\\Projet_test\\RAG_M-A\\Data\\deals_data_cleaned_CFNews.csv",
       "last_modified": "2025-01-07",
       "tags": ["nouvelles", "entreprises", "actualités", "opérations", "fusion", "acquisitions"]
       },
@@ -44,10 +44,18 @@
       "file_name": "deals_MergerMarket.csv",
       "type": "CSV",
       "description": "Collection de transactions liées aux entreprises analysées et au marché de la finance d'entreprise. Ces informations viennent de MergerMarket. On y retrouve des multiples de transactions",
-      "source": "C:\\Users\\namar\\Documents\\poc_RAG\\Projet_test\\RAG_M-A\\Data\\pe_firms_cleaned.csv",
+      "source": "C:\\Users\\namar\\Documents\\poc_RAG\\Projet_test\\RAG_M-A\\Data\\deals_MergerMarket.csv",
       "last_modified": "2025-01-07",
       "tags": ["nouvelles", "entreprises", "multiples", "opérations", "fusion", "acquisitions"]
-      }
+      },
+      {
+        "file_name": "deals_data_cleaned_CFNews_converted_NLP.txt",
+        "type": "TXT",
+        "description": "Collection d'articles et de nouvelles liées aux entreprises analysées et au marché de la finance d'entreprise. Ces informations viennet de CFNews.",
+        "source": "C:\\Users\\namar\\Documents\\poc_RAG\\Projet_test\\RAG_M-A\\Data\\deals_data_cleaned_CFNews_converted_NLP.txt",
+        "last_modified": "2025-01-07",
+        "tags": ["nouvelles", "entreprises", "actualités", "opérations", "fusion", "acquisitions"]
+        }
     ]
   }
   
