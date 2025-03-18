@@ -110,8 +110,9 @@ if st.session_state["registered"] and st.session_state["ready_to_access"]:
                     st.error(f"An error occurred while generating the answer: {e}")
     
     elif menu == "Company profile":
-        st.subheader("Générer une fiche entreprise à partir de la réponse du LLM")
+        st.subheader("Generate a company profile")
         # Saisie manuelle du nom de l'entreprise
+        st.write("Don't hesitate to ask for both profiles (with and witout Web Search) to have a more complete answer !")
         company_name = st.text_input("Entrez le nom de l'entreprise :", key="company_name_input")
 
         # Bouton 1 : Génération standard
