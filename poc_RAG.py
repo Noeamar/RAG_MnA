@@ -11,7 +11,7 @@ import bs4
 import time
 import random
 import requests  # Pour télécharger depuis GitHub
-
+from time import sleep
 # Importations de LangChain et autres
 from langchain import hub
 from langchain.text_splitter import RecursiveCharacterTextSplitter
