@@ -536,6 +536,7 @@ Respond ONLY within the following JSON structure (no extra text):
 }}
 """
     answer_prompt = ChatPromptTemplate.from_template(answer_template)
+    print(f"[LOG] Importation du modèle ChatOpenAI search")
     llm = ChatOpenAI(model='gpt-4o-mini-search-preview', model_kwargs={"web_search_options": {}})
     final_input = {"context": context, "question": question}
     
