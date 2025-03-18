@@ -733,6 +733,10 @@ Respond ONLY within the following structure (no extra text):
     
 #     return answer_dict
 
+
+from time import sleep
+
+
 def internet_search(query: str) -> list:
     """
     Effectue une recherche Internet avec le modèle gpt-4o-mini-search-preview
