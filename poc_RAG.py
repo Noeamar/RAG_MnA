@@ -648,10 +648,10 @@ Your response should be factual, concise, and focused solely on the provided con
     print("[LOG] Réponse multiples transactions générée.")
     return answer
 
+
 import io
 from PyPDF2 import PdfReader, PdfWriter
 from reportlab.pdfgen import canvas
-from reportlab.lib.pagesizes import letter, landscape
 from reportlab.pdfbase import pdfmetrics
 
 def wrap_text(text, font_name, font_size, max_width):
@@ -679,9 +679,9 @@ def wrap_text(text, font_name, font_size, max_width):
 def add_watermark_to_pdf(input_pdf_bytes: bytes, bank_name: str) -> bytes:
     """
     Ajoute un filigrane au PDF contenu dans input_pdf_bytes.
-    Le filigrane aura la forme "Confidentiel - <bank_name>" (avec un espace après le tiret),
-    et sera automatiquement mis en forme pour aller à la ligne si nécessaire, sans couper de mot,
-    puis centré en fonction des dimensions de la première page du PDF.
+    Le filigrane aura la forme "Confidentiel - <bank_name>".
+    Le texte est découpé en lignes sans couper de mot, centré et incliné à 45° sur la première page,
+    puis appliqué à toutes les pages du PDF.
     Retourne le PDF filigrané sous forme d'octets.
     """
     watermark_text = f"Confidentiel - {bank_name.strip()}"
@@ -692,6 +692,7 @@ def add_watermark_to_pdf(input_pdf_bytes: bytes, bank_name: str) -> bytes:
     first_page = reader.pages[0]
     page_width = float(first_page.mediabox.width)
     page_height = float(first_page.mediabox.height)
+    
     packet = io.BytesIO()
     can = canvas.Canvas(packet, pagesize=(page_width, page_height))
     font_name = "Helvetica"
@@ -702,8 +703,8 @@ def add_watermark_to_pdf(input_pdf_bytes: bytes, bank_name: str) -> bytes:
     num_lines = len(lines)
     line_height = font_size * 1.2
     total_text_height = num_lines * line_height
-    start_y = total_text_height / 2 - line_height/2
-    can.translate(page_width/2, page_height/2)
+    start_y = total_text_height / 2 - line_height / 2
+    can.translate(page_width / 2, page_height / 2)
     can.rotate(45)
     can.setFillColorRGB(0, 0, 0, alpha=0.15)
     for i, line in enumerate(lines):
