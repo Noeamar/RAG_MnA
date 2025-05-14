@@ -23,6 +23,8 @@ from langchain.schema import Document
 from langchain.prompts import ChatPromptTemplate
 from langchain.vectorstores import FAISS
 from docxtpl import DocxTemplate
+from langchain.docstore.document import Document
+from langchain.retrievers import BM25Retriever
 
 # --- Configuration des variables d'environnement ---
 os.environ['LANGCHAIN_TRACING_V2'] = 'true'
@@ -63,6 +65,33 @@ def download_file_from_github(source_blob_name: str, destination_file_name: str)
 from langchain_core.pydantic_v1 import BaseModel, Field
 from langchain_core.prompts import PromptTemplate
 from langchain_core.output_parsers import StrOutputParser
+import re
+
+def load_nlp_text_documents_from_github(github_raw_url: str) -> list:
+    """
+    Télécharge un fichier texte depuis GitHub (URL raw) où chaque section commence par "Ligne <num>:"
+    et renvoie une liste de Documents.
+    
+    Args:
+        github_raw_url (str): URL raw du fichier.
+        
+    Returns:
+        list: Liste de Documents.
+    """
+    response = requests.get(github_raw_url)
+    if response.status_code != 200:
+        raise Exception(f"Erreur lors du téléchargement du fichier : {response.status_code}")
+    content = response.text
+    segments = re.split(r'\n\s*Ligne \d+:', content)
+    documents = []
+    for segment in segments:
+        seg = segment.strip()
+        if seg:
+            documents.append(Document(page_content=seg, metadata={}))
+    return documents
+
+# Exemple d'import depuis GitHub
+documents = load_nlp_text_documents_from_github("https://raw.githubusercontent.com/Noeamar/RAG_MnA/main/Data/deals_data_cleaned_CFNews_converted_NLP.txt")
 
 def rag_fusion(question: str) -> str:
     print("[LOG] Démarrage de rag_fusion pour la question :", question, flush=True)
@@ -135,99 +164,150 @@ Provide a clear, fact-based answer focusing on the M&A domain.
     print("[LOG] Réponse générée.", flush=True)
     return answer
 
+
+import os
+from concurrent.futures import ThreadPoolExecutor, as_completed
+
+import openai
+from langchain.chat_models import ChatOpenAI
+from langchain.embeddings.openai import OpenAIEmbeddings
+from langchain.vectorstores import FAISS
+from langchain.prompts import ChatPromptTemplate
+from langchain_core.output_parsers import StrOutputParser
+from langchain.schema import Document
+from langchain.load import dumps, loads
+from langchain.retrievers import BM25Retriever  # si votre version diffère, ajustez ce import
+
+# Monkey‐patch si nécessaire
+if not hasattr(openai, "OpenAI"):
+    openai.OpenAI = openai.Client
+if not hasattr(openai, "AsyncOpenAI") and hasattr(openai, "AsyncClient"):
+    openai.AsyncOpenAI = openai.AsyncClient
+
 def rag_fusion_actualites(question: str) -> str:
-    print("[LOG] Démarrage de rag_fusion_actualites pour la question :", question)
-    
-    # Définissez ici la liste des dossiers batch contenant les index FAISS
+    print("[LOG] Démarrage pour la question :", question, flush=True)
+
+    # 1) Dossiers de vos 3 batches FAISS
     batch_dirs = [
         "./Data/FAISS_index_actualites_NLP_400_0_batch_1",
         "./Data/FAISS_index_actualites_NLP_400_0_batch_2",
-        "./Data/FAISS_index_actualites_NLP_400_0_batch_3"
+        "./Data/FAISS_index_actualites_NLP_400_0_batch_3",
+        "./Data/FAISS_index_actualites_NLP_400_0_batch_4",
+        "./Data/FAISS_index_actualites_NLP_400_0_batch_5",
+        "./Data/FAISS_index_actualites_NLP_400_0_batch_6",
+        "./Data/FAISS_index_actualites_NLP_400_0_batch_7"
     ]
-    
-    # Vous pouvez ajouter ici du code pour télécharger chaque batch depuis GitHub s'il manque
-    for batch in batch_dirs:
-        if not os.path.exists(batch):
-            print(f"[LOG] Attention, le dossier {batch} n'existe pas.")
-            # download_file_from_github(...)  # Vous pouvez adapter cette partie si besoin.
-    
+
+    # 2) Embeddings
     embedding = OpenAIEmbeddings()
-    retrievers = []
-    
-    # Charger chaque index FAISS et créer un retriever avec le nouveau paramétrage
-    for batch in batch_dirs:
-        print(f"[LOG] Chargement de l'index depuis {batch}")
-        vectorstore = FAISS.load_local(batch, embeddings=embedding, allow_dangerous_deserialization=True)
-        # Utilisation du retriever en mode "similarity_score_threshold"
-        retriever = vectorstore.as_retriever(
-            search_type="similarity_score_threshold",
-            search_kwargs={"score_threshold": 0.6, "k": 10}
-        )
-        retrievers.append(retriever)
-    
-    print("[LOG] Tous les index batch sont chargés.")
-    
-    # Génération des requêtes via le prompt
-    query_generation_template = ("You are a helpful assistant that generates multiple search queries based on a single input query. \n"
-    "Generate multiple search queries related to: {question} \n"
-    "Output (3 queries):"
+
+    # 3) Chargement FAISS en parallèle
+    dense_retrievers = []
+    with ThreadPoolExecutor(max_workers=len(batch_dirs)) as executor:
+        future_to_path = {
+            executor.submit(
+                FAISS.load_local,
+                path,
+                embeddings=embedding,
+                allow_dangerous_deserialization=True
+            ): path
+            for path in batch_dirs
+        }
+        for fut in as_completed(future_to_path):
+            path = future_to_path[fut]
+            try:
+                vs = fut.result()
+                print(f"[LOG] Index FAISS chargé depuis {path}", flush=True)
+                dense_retrievers.append(
+                    vs.as_retriever(
+                        search_type="similarity_score_threshold",
+                        search_kwargs={"score_threshold": 0.6, "k": 10}
+                    )
+                )
+            except Exception as e:
+                print(f"[ERROR] Échec chargement FAISS {path}: {e}", flush=True)
+
+    print(f"[LOG] {len(dense_retrievers)} retrievers denses prêts.", flush=True)
+
+    # 4) BM25Retriever (documents doit être défini en amont)
+    #    ex : documents = load_nlp_text_documents(...)
+    bm25_retriever = BM25Retriever.from_documents(documents, k=10)
+    print("[LOG] BM25Retriever initialisé.", flush=True)
+
+    # 5) Génération des 3 requêtes
+    query_tpl = ChatPromptTemplate.from_template(
+        "You are a helpful assistant that generates 3 search queries based on the input. \n"
+        "Generate 3 queries related to: {question}"
     )
-    prompt_rag_fusion = ChatPromptTemplate.from_template(query_generation_template)
-    generate_queries = (
-        prompt_rag_fusion
-        | ChatOpenAI(model='o1-mini')
+    raw = (
+        query_tpl
+        | ChatOpenAI(model="gpt-4o-mini", temperature=1)
         | StrOutputParser()
-        | (lambda x: x.split("\n"))
-    )
-    queries = generate_queries.invoke({"question": question})
-    print("[LOG] Requêtes générées :", queries)
-    
-    # Pour chaque requête, interroger tous les retrievers et combiner les résultats
+    ).invoke({"question": question})
+    queries = [q.strip() for q in raw.split("\n") if q.strip()]
+    print("[LOG] Requêtes générées :", queries, flush=True)
+
+    # 6) Pour chaque requête : retrieval dense+BM25 en parallèle
     all_results = []
     for q in queries:
-        query_results = []
-        for retriever in retrievers:
-            # Utilisez .invoke(q) pour récupérer les documents pour la requête q
-            docs = retriever.invoke(q)
-            query_results.extend(docs)
-        all_results.append(query_results)
-    print("[LOG] Documents récupérés pour chaque requête.")
-    
-    # Fusion des résultats avec Reciprocal Rank Fusion (RRF)
-    fused_scores = {}
+        print(f"[LOG] Traitement de la requête : {q}", flush=True)
+        with ThreadPoolExecutor(max_workers=len(dense_retrievers) + 1) as executor:
+            future_to_source = {}
+
+            # dense
+            for retr in dense_retrievers:
+                future_to_source[executor.submit(retr.invoke, q)] = "dense"
+            # sparse
+            future_to_source[executor.submit(bm25_retriever.invoke, q)] = "sparse"
+
+            results = []
+            for fut in as_completed(future_to_source):
+                src = future_to_source[fut]
+                try:
+                    docs = fut.result()
+                    print(f"  [LOG] {len(docs)} docs {src}", flush=True)
+                    results.extend(docs)
+                except Exception as e:
+                    print(f"  [ERROR] retrieval {src} échoué : {e}", flush=True)
+
+        all_results.append(results)
+
+    print("[LOG] Récupération terminée pour chaque requête.", flush=True)
+
+    # 7) Fusion RRF par requête et global
+    #    Ici on simplifie en fusionnant tous ensemble comme précédemment
+    global_scores = {}
+    unique_docs = {}
     for docs in all_results:
-        for rank, doc in enumerate(docs):
-            doc_dict = {"page_content": doc.page_content, "metadata": doc.metadata}
-            doc_str = json.dumps(doc_dict)
-            if doc_str not in fused_scores:
-                fused_scores[doc_str] = 0
-            fused_scores[doc_str] += 1 / (rank + 100)
-    
-    reranked_docs = [
-        (Document(page_content=d["page_content"], metadata=d["metadata"]), score)
-        for d_str, score in sorted(fused_scores.items(), key=lambda x: x[1], reverse=True)
-        for d in [json.loads(d_str)]
-    ]
-    print(f"[LOG] Documents fusionnés : {len(reranked_docs)} documents rerankés.")
-    
-    # Construire le contexte à partir des documents rerankés
-    context = "\n\n".join([doc.page_content for doc, _ in reranked_docs])
-    
-    # Génération de la réponse finale avec le prompt de réponse
-    answer_template = (
-        "You are a financial journalist and M&A expert focusing on recent news. Using the following context "
-        "extracted from M&A news sources, answer the user's question."
-        "Always present the information chronologically."
-        "Always give your source. It's always given in the title of the file the information is extracted from. It's either Arx or CFNews.\n\n"
-        "Context:\n{context}\n\n"
-        "Question: {question}\n\n"
+        # rrf par requête
+        for rank, doc in enumerate(docs, start=1):
+            key = doc.page_content
+            global_scores[key] = global_scores.get(key, 0) + 1.0 / (rank + 100)
+            unique_docs[key] = doc
+
+    final_docs = sorted(
+        unique_docs.values(),
+        key=lambda d: global_scores.get(d.page_content, 0),
+        reverse=True
     )
-    answer_prompt = ChatPromptTemplate.from_template(answer_template)
-    llm = ChatOpenAI(model='o1-mini')
-    final_input = {"context": context, "question": question}
-    answer = (answer_prompt | llm | StrOutputParser()).invoke(final_input)
-    
-    print("[LOG] Réponse générée.")
+    print(f"[LOG] Documents fusionnés globalement : {len(final_docs)} items.", flush=True)
+
+    # 8) Construire le contexte (jusqu’aux 50 meilleurs)
+    context = "\n\n".join(d.page_content for d in final_docs[:50])
+
+    # 9) Prompt final
+    answer_tpl = ChatPromptTemplate.from_template(
+        "You are a financial journalist and M&A expert focusing on recent news. "
+        "Using the context below, answer chronologically and citez toujours la source.\n\n"
+        "Context:\n{context}\n\nQuestion: {question}"
+    )
+    answer = (
+        answer_tpl
+        | ChatOpenAI(model="o1-mini", temperature=1)
+        | StrOutputParser()
+    ).invoke({"context": context, "question": question})
+
+    print("[LOG] Réponse générée.", flush=True)
     return answer
 
     
