@@ -507,9 +507,12 @@ Respond ONLY within the following structure (no extra text):
     return answer_dict
 
 def rag_fusion_fiche_societe_to_word_websearch(question: str) -> dict:
+    """
+    Interroge votre base FAISS RAG + websearch-preview pour produire une fiche JSON.
+    """
     print("[LOG] Démarrage pour :", question)
 
-    # 1) Vos 7 batches FAISS
+    # 1) Chemins vers vos 7 batches FAISS
     batch_dirs = [
         "./Data/FAISS_index_actualites_NLP_400_0_batch_1",
         "./Data/FAISS_index_actualites_NLP_400_0_batch_2",
@@ -520,11 +523,11 @@ def rag_fusion_fiche_societe_to_word_websearch(question: str) -> dict:
         "./Data/FAISS_index_actualites_NLP_400_0_batch_7",
     ]
 
-    # 2) Chargez tous les FAISS en parallèle
+    # 2) Chargement parallèle des retrievers
     embedding = OpenAIEmbeddings()
     retrievers = []
     with ThreadPoolExecutor(max_workers=len(batch_dirs)) as exe:
-        futures = {
+        future_to_dir = {
             exe.submit(
                 FAISS.load_local,
                 path,
@@ -533,8 +536,8 @@ def rag_fusion_fiche_societe_to_word_websearch(question: str) -> dict:
             ): path
             for path in batch_dirs
         }
-        for fut in as_completed(futures):
-            path = futures[fut]
+        for fut in as_completed(future_to_dir):
+            path = future_to_dir[fut]
             try:
                 vs = fut.result()
                 retrievers.append(
@@ -546,9 +549,10 @@ def rag_fusion_fiche_societe_to_word_websearch(question: str) -> dict:
                 print(f"[LOG] Chargé FAISS depuis {path}")
             except Exception as e:
                 print(f"[ERROR] échec chargement {path} : {e}")
+
     print(f"[LOG] {len(retrievers)} retrievers prêts.")
 
-    # 3) Génération de 3 requêtes
+    # 3) Génération de 3 requêtes avec o1-mini (température par défaut = 1)
     prompt_q = f"""
 You are a helpful assistant that generates 3 distinct search queries based on the input.
 Input: {question}
@@ -563,7 +567,7 @@ Output the 3 queries, one per line:
     queries = [q.strip() for q in raw_q.splitlines() if q.strip()]
     print("[LOG] Queries générées :", queries)
 
-    # 4) Récupération parallèle + Fusion RRF par requête
+    # 4) Recherche parallèle sur chaque retriever + RRF par requête
     all_docs = []
     for q in queries:
         with ThreadPoolExecutor(max_workers=len(retrievers)) as exe:
@@ -576,7 +580,7 @@ Output the 3 queries, one per line:
                     print(f"[ERROR] retrieval '{q}' failed : {e}")
         all_docs.append(docs)
 
-    # 5) Reciprocal Rank Fusion global
+    # 5) RRF global
     fused = {}
     for docs in all_docs:
         for rank, doc in enumerate(docs, start=1):
@@ -584,12 +588,12 @@ Output the 3 queries, one per line:
             fused[key] = fused.get(key, 0) + 1.0 / (rank + 100)
     ranked = sorted(fused.items(), key=lambda x: x[1], reverse=True)
     reranked_docs = [Document(**json.loads(k)) for k, _ in ranked]
-    print(f"[LOG] RRF fusion aboutit à {len(reranked_docs)} docs.")
+    print(f"[LOG] RRF fusion a produit {len(reranked_docs)} docs.")
 
     # 6) Contexte abrégé (10 premiers)
     context = "\n\n".join(doc.page_content for doc in reranked_docs[:10])
 
-    # 7) Prompt final (ici on échappe le JSON schema avec doubles {{ }})
+    # 7) Prompt final avec web-search-preview, sans temperature
     answer_template = r"""
 You are a financial journalist and M&A expert. You MUST answer in JSON format only, strictly matching the provided structure.
 
@@ -623,14 +627,13 @@ Respond ONLY within the following JSON structure (no extra text):
 """.strip()
 
     prompt_final = answer_template.format(context=context, question=question)
-    # 8) Appel search-preview **sans** temperature
     resp_f = openai.chat.completions.create(
         model="gpt-4o-mini-search-preview",
         messages=[{"role": "user", "content": prompt_final}],
     )
     raw_f = resp_f.choices[0].message.content
 
-    # 9) Nettoyage + JSON parse
+    # 8) Nettoyage et parsing JSON
     text = raw_f.strip()
     if text.startswith("```json"):
         text = text[len("```json"):].strip()
