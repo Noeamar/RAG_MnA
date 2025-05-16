@@ -610,7 +610,7 @@ Output the 3 queries, one per line:
 You are a financial journalist and M&A expert. You MUST answer in JSON format only, strictly matching the provided structure.
 
 Use primarily the context provided below (abridged) to construct your answer. If the context lacks certain details, supplement your answer with the most relevant results from your internet search.
-Provide the URL of the source when you give a number!
+Provide the URL of the source whenever you give an information!
 Context (abridged):
 {context}
 
