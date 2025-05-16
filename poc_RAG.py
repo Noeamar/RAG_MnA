@@ -380,91 +380,101 @@ Offer a fact-based response highlighting key investment criteria.
 
 def rag_fusion_fiche_societe_to_word(question: str) -> dict:
     """
-    Interroge la base d'actualités M&A via RAG et retourne une réponse structurée pour remplir un template Word.
+    Interroge la base M&A (RAG via FAISS) et retourne une fiche JSON pour Word.
     """
-    print("[LOG] Démarrage de rag_fusion_fiche_societe_to_word pour la question :", question)
-    # Définissez ici la liste des dossiers batch contenant les index FAISS
+    print("[LOG] Démarrage rag_fusion_fiche_societe_to_word pour :", question)
+
+    # 1) Chemins vers vos 3 batches FAISS
     batch_dirs = [
         "./Data/FAISS_index_actualites_NLP_400_0_batch_1",
         "./Data/FAISS_index_actualites_NLP_400_0_batch_2",
-        "./Data/FAISS_index_actualites_NLP_400_0_batch_3"
+        "./Data/FAISS_index_actualites_NLP_400_0_batch_3",
+        "./Data/FAISS_index_actualites_NLP_400_0_batch_4",
+        "./Data/FAISS_index_actualites_NLP_400_0_batch_5",
+        "./Data/FAISS_index_actualites_NLP_400_0_batch_6",
+        "./Data/FAISS_index_actualites_NLP_400_0_batch_7",
     ]
-    
-    # Vous pouvez ajouter ici du code pour télécharger chaque batch depuis GitHub s'il manque
-    for batch in batch_dirs:
-        if not os.path.exists(batch):
-            print(f"[LOG] Attention, le dossier {batch} n'existe pas.")
-            # download_file_from_github(...)  # Vous pouvez adapter cette partie si besoin.
-    
+
+    # 2) Chargement parallèle des retrievers
     embedding = OpenAIEmbeddings()
     retrievers = []
-    
-    # Charger chaque index FAISS et créer un retriever avec le nouveau paramétrage
-    for batch in batch_dirs:
-        print(f"[LOG] Chargement de l'index depuis {batch}")
-        vectorstore = FAISS.load_local(batch, embeddings=embedding, allow_dangerous_deserialization=True)
-        # Utilisation du retriever en mode "similarity_score_threshold"
-        retriever = vectorstore.as_retriever(
-            search_type="similarity_score_threshold",
-            search_kwargs={"score_threshold": 0.6, "k": 10}
-        )
-        retrievers.append(retriever)
-    
-    print("[LOG] Tous les index batch sont chargés.")
-    
-    # Génération des requêtes via le prompt
-    query_generation_template = ("You are a helpful assistant that generates multiple search queries based on a single input query. \n"
-    "Generate multiple search queries related to: {question} \n"
-    "Output (3 queries):"
+    with ThreadPoolExecutor(max_workers=len(batch_dirs)) as exe:
+        fut_to_path = {
+            exe.submit(
+                FAISS.load_local,
+                path,
+                embeddings=embedding,
+                allow_dangerous_deserialization=True
+            ): path
+            for path in batch_dirs
+        }
+        for fut in as_completed(fut_to_path):
+            path = fut_to_path[fut]
+            try:
+                vs = fut.result()
+                retrievers.append(
+                    vs.as_retriever(
+                        search_type="similarity_score_threshold",
+                        search_kwargs={"score_threshold": 0.6, "k": 10}
+                    )
+                )
+                print(f"[LOG] Chargé FAISS depuis {path}")
+            except Exception as e:
+                print(f"[ERROR] échec chargement {path} : {e}")
+
+    print(f"[LOG] {len(retrievers)} retrievers prêts.")
+
+    # 3) Génération de 3 requêtes (modèle o1-mini, température par défaut)
+    prompt_q = f"""
+You are a helpful assistant that generates 3 distinct search queries based on the input.
+Input: {question}
+
+Output the 3 queries, one per line:
+""".strip()
+    resp_q = openai.chat.completions.create(
+        model="o1-mini",
+        messages=[{"role": "user", "content": prompt_q}],
     )
-    prompt_rag_fusion = ChatPromptTemplate.from_template(query_generation_template)
-    generate_queries = (
-        prompt_rag_fusion
-        | ChatOpenAI(model='o1-mini')
-        | StrOutputParser()
-        | (lambda x: x.split("\n"))
-    )
-    queries = generate_queries.invoke({"question": question})
-    print("[LOG] Requêtes générées :", queries)
-    
-    # Pour chaque requête, interroger tous les retrievers et combiner les résultats
-    all_results = []
+    raw_q = resp_q.choices[0].message.content
+    queries = [q.strip() for q in raw_q.splitlines() if q.strip()]
+    print("[LOG] Queries générées :", queries)
+
+    # 4) Recherche sur chaque retriever + RRF par requête
+    all_docs = []
     for q in queries:
-        query_results = []
-        for retriever in retrievers:
-            # Utilisez .invoke(q) pour récupérer les documents pour la requête q
-            docs = retriever.invoke(q)
-            query_results.extend(docs)
-        all_results.append(query_results)
-    print("[LOG] Documents récupérés pour chaque requête.")
-    
-    # Fusion des résultats avec Reciprocal Rank Fusion (RRF)
-    fused_scores = {}
-    for docs in all_results:
-        for rank, doc in enumerate(docs):
-            doc_dict = {"page_content": doc.page_content, "metadata": doc.metadata}
-            doc_str = json.dumps(doc_dict)
-            if doc_str not in fused_scores:
-                fused_scores[doc_str] = 0
-            fused_scores[doc_str] += 1 / (rank + 100)
-    
-    reranked_docs = [
-        (Document(page_content=d["page_content"], metadata=d["metadata"]), score)
-        for d_str, score in sorted(fused_scores.items(), key=lambda x: x[1], reverse=True)
-        for d in [json.loads(d_str)]
-    ]
-    print(f"[LOG] Documents fusionnés : {len(reranked_docs)} documents rerankés.")
-    
-    context = "\n\n".join([doc.page_content for doc, _ in reranked_docs])
-    
-    answer_template = """You are a financial journalist and M&A expert. You MUST answer in JSON format only, strictly matching the provided structure.
+        docs = []
+        with ThreadPoolExecutor(max_workers=len(retrievers)) as exe:
+            futs = [exe.submit(r.invoke, q) for r in retrievers]
+            for f in as_completed(futs):
+                try:
+                    docs.extend(f.result())
+                except Exception as e:
+                    print(f"[ERROR] retrieval '{q}' failed : {e}")
+        all_docs.append(docs)
+
+    # 5) Fusion RRF globale
+    fused = {}
+    for docs in all_docs:
+        for rank, doc in enumerate(docs, start=1):
+            key = json.dumps({"page_content": doc.page_content, "metadata": doc.metadata})
+            fused[key] = fused.get(key, 0.0) + 1.0 / (rank + 100)
+    ranked = sorted(fused.items(), key=lambda x: x[1], reverse=True)
+    reranked_docs = [Document(**json.loads(k)) for k, _ in ranked]
+    print(f"[LOG] RRF a produit {len(reranked_docs)} docs.")
+
+    # 6) Construire le contexte complet
+    context = "\n\n".join(d.page_content for d in reranked_docs)
+
+    # 7) Prompt final
+    answer_template = r"""
+You are a financial journalist and M&A expert. You MUST answer in JSON format only, strictly matching the provided structure.
 
 Context:
 {context}
 
 Question: {question}
 
-Rewrite everything you are given in the context so that there are nice sentences.
+Rewrite everything you are given in the context into well-formed sentences.
 
 Respond ONLY within the following structure (no extra text):
 
@@ -481,30 +491,32 @@ Respond ONLY within the following structure (no extra text):
     "actionnaire_pourcentage": "Shareholder distribution percentages if available",
     "creanciers_type": "List types of creditors concisely",
     "creanciers_commentaires": "Provide a brief summary of the creditors' comments",
-    "actualites_presse": "Present with maximum details and a clear language recent press news in a clear format",
-    "equity_story": "Present with maximum details and a clear language major equity events and investments",
-    "creation": "Present with maximum details and a clear language creation details or year of founding",
-    "acquisitions": "Present with maximum details and a clear language all acquisitions, including dates and a descriptions"
+    "actualites_presse": "Present recent press news with maximum details and clear language",
+    "equity_story": "Present major equity events and investments with maximum details and clear language",
+    "creation": "Present creation details or year of founding with maximum details and clear language",
+    "acquisitions": "Present all key acquisitions, including dates and descriptions, with maximum details and clear language"
 }}
-"""
-    answer_prompt = ChatPromptTemplate.from_template(answer_template)
-    llm = ChatOpenAI(model='o1-mini')
-    final_input = {"context": context, "question": question}
-    answer = (answer_prompt | llm | StrOutputParser()).invoke(final_input)
-    
-    try:
-        raw_answer = answer.strip()
-        # Retirer les balises markdown si présentes
-        if raw_answer.startswith("```json"):
-            raw_answer = raw_answer[len("```json"):].strip()
-        if raw_answer.endswith("```"):
-            raw_answer = raw_answer[:-3].strip()
-        answer_dict = json.loads(raw_answer)
-    except json.JSONDecodeError as e:
-        answer_dict = {}
-        print("[LOG] Erreur lors du parsing JSON de la réponse du LLM:", e)
+""".strip()
 
-    return answer_dict
+    prompt_final = answer_template.format(context=context, question=question)
+    resp_f = openai.chat.completions.create(
+        model="gpt-4o-mini",
+        messages=[{"role": "user", "content": prompt_final}],
+    )
+    raw_f = resp_f.choices[0].message.content
+
+    # 8) Nettoyer et parser
+    text = raw_f.strip()
+    if text.startswith("```json"):
+        text = text[len("```json"):].strip()
+    if text.endswith("```"):
+        text = text[:-3].strip()
+
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError as e:
+        print("[ERROR] JSON parse failed:", e)
+        return {}
 
 def rag_fusion_fiche_societe_to_word_websearch(question: str) -> dict:
     """
