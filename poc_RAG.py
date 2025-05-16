@@ -507,13 +507,9 @@ Respond ONLY within the following structure (no extra text):
     return answer_dict
 
 def rag_fusion_fiche_societe_to_word_websearch(question: str) -> dict:
-    """
-    Query M&A news via RAG, supplement with internet search using a search-preview model,
-    and return a strictly formatted JSON dict.
-    """
-    print("[LOG] Démarrage rag_fusion_fiche_societe_to_word_websearch :", question)
+    print("[LOG] Démarrage pour :", question)
 
-    # 1) Les 7 batches FAISS
+    # 1) Vos 7 batches FAISS
     batch_dirs = [
         "./Data/FAISS_index_actualites_NLP_400_0_batch_1",
         "./Data/FAISS_index_actualites_NLP_400_0_batch_2",
@@ -524,16 +520,11 @@ def rag_fusion_fiche_societe_to_word_websearch(question: str) -> dict:
         "./Data/FAISS_index_actualites_NLP_400_0_batch_7",
     ]
 
-    # 2) Vérification existence
-    for p in batch_dirs:
-        if not os.path.exists(p):
-            print(f"[WARN] Batch manquant : {p}")
-
-    # 3) Chargement embeddings + retrievers en parallèle
+    # 2) Chargez tous les FAISS en parallèle
     embedding = OpenAIEmbeddings()
     retrievers = []
     with ThreadPoolExecutor(max_workers=len(batch_dirs)) as exe:
-        fut2path = {
+        futures = {
             exe.submit(
                 FAISS.load_local,
                 path,
@@ -542,8 +533,8 @@ def rag_fusion_fiche_societe_to_word_websearch(question: str) -> dict:
             ): path
             for path in batch_dirs
         }
-        for fut in as_completed(fut2path):
-            path = fut2path[fut]
+        for fut in as_completed(futures):
+            path = futures[fut]
             try:
                 vs = fut.result()
                 retrievers.append(
@@ -552,52 +543,53 @@ def rag_fusion_fiche_societe_to_word_websearch(question: str) -> dict:
                         search_kwargs={"score_threshold": 0.6, "k": 10}
                     )
                 )
-                print(f"[LOG] FAISS chargé depuis {path}")
+                print(f"[LOG] Chargé FAISS depuis {path}")
             except Exception as e:
                 print(f"[ERROR] échec chargement {path} : {e}")
+    print(f"[LOG] {len(retrievers)} retrievers prêts.")
 
-    # 4) Génération de 3 requêtes
-    query_tpl = ChatPromptTemplate.from_template(
-        "You are a helpful assistant that generates multiple search queries based on a single input query.\n"
-        "Generate multiple search queries related to: {question}\n"
-        "Output exactly 3 queries, one per line."
-    )
-    generate_queries = (
-        query_tpl
-        | ChatOpenAI(model="o1-mini", temperature=1)
-        | StrOutputParser()
-        | (lambda txt: [q.strip() for q in txt.splitlines() if q.strip()][:3])
-    )
-    queries = generate_queries.invoke({"question": question})
-    print("[LOG] Requêtes générées :", queries)
+    # 3) Génération de 3 requêtes
+    prompt_q = f"""
+You are a helpful assistant that generates 3 distinct search queries based on the input.
+Input: {question}
 
-    # 5) Récupération parallèle + RRF
+Output the 3 queries, one per line:
+""".strip()
+    resp_q = openai.chat.completions.create(
+        model="o1-mini",
+        messages=[{"role": "user", "content": prompt_q}],
+    )
+    raw_q = resp_q.choices[0].message.content
+    queries = [q.strip() for q in raw_q.splitlines() if q.strip()]
+    print("[LOG] Queries générées :", queries)
+
+    # 4) Récupération parallèle + Fusion RRF par requête
     all_docs = []
     for q in queries:
-        docs_q = []
         with ThreadPoolExecutor(max_workers=len(retrievers)) as exe:
-            futures = [exe.submit(r.invoke, q) for r in retrievers]
-            for fut in as_completed(futures):
+            futs = [exe.submit(r.invoke, q) for r in retrievers]
+            docs = []
+            for f in as_completed(futs):
                 try:
-                    docs_q.extend(fut.result())
+                    docs.extend(f.result())
                 except Exception as e:
-                    print(f"[ERROR] récupération échec pour '{q}': {e}")
-        all_docs.append(docs_q)
+                    print(f"[ERROR] retrieval '{q}' failed : {e}")
+        all_docs.append(docs)
 
-    # Reciprocal Rank Fusion
+    # 5) Reciprocal Rank Fusion global
     fused = {}
     for docs in all_docs:
         for rank, doc in enumerate(docs, start=1):
             key = json.dumps({"page_content": doc.page_content, "metadata": doc.metadata})
-            fused[key] = fused.get(key, 0.0) + 1.0 / (rank + 100)
+            fused[key] = fused.get(key, 0) + 1.0 / (rank + 100)
     ranked = sorted(fused.items(), key=lambda x: x[1], reverse=True)
     reranked_docs = [Document(**json.loads(k)) for k, _ in ranked]
-    print(f"[LOG] {len(reranked_docs)} documents fusionnés.")
+    print(f"[LOG] RRF fusion aboutit à {len(reranked_docs)} docs.")
 
     # 6) Contexte abrégé (10 premiers)
-    context = "\n\n".join(d.page_content for d in reranked_docs[:10])
+    context = "\n\n".join(doc.page_content for doc in reranked_docs[:10])
 
- # 7) Prompt final (notez les doubles accolades pour échapper le JSON schema)
+    # 7) Prompt final (ici on échappe le JSON schema avec doubles {{ }})
     answer_template = r"""
 You are a financial journalist and M&A expert. You MUST answer in JSON format only, strictly matching the provided structure.
 
@@ -606,7 +598,7 @@ Provide the URL of the source when you give a number!
 Context (abridged):
 {context}
 
-Question: {question}.
+Question: {question}
 
 Respond ONLY within the following JSON structure (no extra text):
 
@@ -630,16 +622,16 @@ Respond ONLY within the following JSON structure (no extra text):
 }}
 """.strip()
 
-    # 8) Appel direct à l'API OpenAI pour le modèle search-preview
-    prompt_content = answer_template.format(context=context, question=question)
-    response = openai.ChatCompletion.create(
+    prompt_final = answer_template.format(context=context, question=question)
+    # 8) Appel search-preview **sans** temperature
+    resp_f = openai.chat.completions.create(
         model="gpt-4o-mini-search-preview",
-        messages=[{"role": "user", "content": prompt_content}],
+        messages=[{"role": "user", "content": prompt_final}],
     )
-    raw = response["choices"][0]["message"]["content"]
+    raw_f = resp_f.choices[0].message.content
 
-    # 9) Nettoyage et parsing JSON
-    text = raw.strip()
+    # 9) Nettoyage + JSON parse
+    text = raw_f.strip()
     if text.startswith("```json"):
         text = text[len("```json"):].strip()
     if text.endswith("```"):
@@ -648,7 +640,7 @@ Respond ONLY within the following JSON structure (no extra text):
     try:
         return json.loads(text)
     except json.JSONDecodeError as e:
-        print("[ERROR] impossible de parser la réponse en JSON :", e)
+        print("[ERROR] impossible de parser JSON :", e)
         return {}
 
 
