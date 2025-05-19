@@ -11,7 +11,8 @@ from poc_RAG import (
     download_file_from_github,
     add_watermark_to_pdf,
     generate_fiche_societe,
-    rag_fusion_fiche_societe_to_word_websearch
+    rag_fusion_fiche_societe_to_word_websearch,
+    password_break
 )
 from langchain.document_loaders import WebBaseLoader
 
@@ -27,7 +28,7 @@ st.set_page_config(
 # ===============================
 # User Registration (Email and Job)
 # ===============================
-user_data_path = "C:\\Users\\namar\\Documents\\poc_RAG\\Projet_test\\RAG_MnA\\user_data.csv"
+user_data_path = "C:\\Users\\namar.DA-CF\\OneDrive - D&A Corporate Finance\\Documents\\poc_RAG\\Projet_test\\RAG_MnA\\user_data.csv"
 
 if "registered" not in st.session_state:
     st.session_state["registered"] = False
@@ -249,12 +250,29 @@ if st.session_state["registered"] and st.session_state["ready_to_access"]:
             else:
                 st.error("Please upload at least one PDF and add at least one bank name before generating PDFs.")
         
+        if st.button("Break Adobe Password"):
+            if "original_pdfs" in st.session_state and st.session_state.original_pdfs:
+                with st.spinner("Breaking passwords..."):
+                    try:
+                        st.session_state.watermarked_pdfs = []  # tuples (fichier, pdf_bytes, nom_de_sortie)
+                        for orig_name, pdf_bytes in st.session_state.original_pdfs:
+                            base = os.path.splitext(orig_name)[0]
+                            wm_bytes = password_break(pdf_bytes)
+                            out_name = f"{base}.pdf"
+                            st.session_state.watermarked_pdfs.append((orig_name, wm_bytes, out_name))
+                            st.success(f"Passwrod broken for « {orig_name} »")
+                    except Exception as e:
+                        st.error(f"An error happened: {e}")
+            else:
+                st.error("Please upload at least one PDF before breaking passwords.")
+
         if "watermarked_pdfs" in st.session_state and st.session_state.watermarked_pdfs:
             with st.spinner("Creating ZIP archive..."):
                 try:
                     zip_buffer = io.BytesIO()
                     with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zip_file:
-                        for _, _, pdf_data, output_filename in st.session_state.watermarked_pdfs:
+                        # Désassemblage en 3 éléments : (original_name, pdf_bytes, output_filename)
+                        for _, pdf_data, output_filename in st.session_state.watermarked_pdfs:
                             zip_file.writestr(output_filename, pdf_data)
                     zip_buffer.seek(0)
                     st.download_button(

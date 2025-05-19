@@ -818,3 +818,62 @@ def add_watermark_to_pdf(input_pdf_bytes: bytes, bank_name: str) -> bytes:
     output_pdf_stream.seek(0)
     print("[LOG] Filigranage terminé.", flush=True)
     return output_pdf_stream.getvalue()
+
+def password_break(input_pdf_bytes: bytes) -> bytes:
+    """
+    Enlève le mot de passe d'un PDF en y ajoutant un filigrane transparent.
+    """
+    watermark_text = ""  # vous pouvez mettre ici un texte si nécessaire
+
+    # Lecture du PDF original
+    input_pdf_stream = io.BytesIO(input_pdf_bytes)
+    reader = PdfReader(input_pdf_stream)
+    if not reader.pages:
+        raise ValueError("Le PDF d'entrée ne contient aucune page.")
+    first_page = reader.pages[0]
+    page_width = float(first_page.mediabox.width)
+    page_height = float(first_page.mediabox.height)
+
+    # Création du PDF de filigrane
+    packet = io.BytesIO()
+    can = canvas.Canvas(packet, pagesize=(page_width, page_height))
+    font_name = "Helvetica"
+    font_size = 40
+    can.setFont(font_name, font_size)
+
+    max_width = page_width * 0.8
+    lines = wrap_text(watermark_text, font_name, font_size, max_width)
+    line_height = font_size * 1.2
+    total_text_height = len(lines) * line_height
+    start_y = (total_text_height / 2) - (line_height / 2)
+
+    can.translate(page_width / 2, page_height / 2)
+    can.rotate(45)
+    # ReportLab ne gère pas l'alpha sur setFillColorRGB, 
+    # on peut éventuellement jouer sur la transparence via PdfWriter plus tard
+    can.setFillColorRGB(0, 0, 0)
+
+    for i, line in enumerate(lines):
+        line_width = pdfmetrics.stringWidth(line, font_name, font_size)
+        x = -line_width / 2
+        y = start_y - i * line_height
+        can.drawString(x, y, line)
+
+    can.save()
+    packet.seek(0)
+
+    watermark_pdf = PdfReader(packet)
+    watermark_page = watermark_pdf.pages[0]
+
+    # Fusion des pages
+    writer = PdfWriter()
+    for page in reader.pages:
+        page.merge_page(watermark_page)
+        writer.add_page(page)
+
+    # Écriture du PDF résultat en mémoire
+    output_pdf_stream = io.BytesIO()
+    writer.write(output_pdf_stream)
+    output_pdf_stream.seek(0)
+
+    return output_pdf_stream.getvalue()
