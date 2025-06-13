@@ -103,30 +103,28 @@ if st.session_state["registered"] and st.session_state["ready_to_access"]:
         if question:
             st.info("Question received!")
 
-            col1, col2 = st.columns(2)
-            with col1:
-                if st.button("Generate Answer (Base DB)", key="news_generate_base"):
-                    with st.spinner("Generating answer from internal news DB..."):
-                        try:
-                            answer = rag_fusion_actualites(question)
-                            st.success("Answer generated successfully!")
-                            st.write("AI-Generated Answer:")
-                            st.success(answer)
-                        except Exception as e:
-                            st.error(f"An error occurred while generating the answer: {e}")
+            # Bouton pour la base interne
+            if st.button("Generate Answer (Base DB)", key="news_generate_base"):
+                with st.spinner("Generating answer from internal news DB..."):
+                    try:
+                        answer = rag_fusion_actualites(question)
+                        st.success("Answer generated successfully!")
+                        st.write("AI-Generated Answer:")
+                        st.success(answer)
+                    except Exception as e:
+                        st.error(f"An error occurred while generating the answer: {e}")
 
-            with col2:
-                if st.button("Generate Answer (Web Search)", key="news_generate_web"):
-                    with st.spinner("Generating answer via Web Search Preview..."):
-                        try:
-                            answer = rag_fusion_actualites_search_preview(question)
-                            st.success("Web–search answer generated successfully!")
-                            st.write("AI-Generated Answer (Web Search):")
-                            st.success(answer)
-                        except Exception as e:
-                            st.error(f"An error occurred while generating the web-search answer: {e}")
+            # Bouton pour la web search
+            if st.button("Generate Answer (Web Search)", key="news_generate_web"):
+                with st.spinner("Generating answer via Web Search Preview..."):
+                    try:
+                        answer = rag_fusion_actualites_search_preview(question)
+                        st.success("Web-search answer generated successfully!")
+                        st.write("AI-Generated Answer (Web Search):")
+                        st.success(answer)
+                    except Exception as e:
+                        st.error(f"An error occurred while generating the web-search answer: {e}")
 
-    
     elif menu == "Company profile":
         st.subheader("Generate a company profile")
         st.write("Don't hesitate to ask for both profiles (with and without Web Search) for a more complete answer!")
