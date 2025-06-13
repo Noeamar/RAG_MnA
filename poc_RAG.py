@@ -666,8 +666,8 @@ Respond ONLY within the following JSON structure (no extra text):
     "actionnaire_pourcentage": "Shareholder distribution percentages if available.",
     "creanciers_type": "List types of creditors concisely.",
     "creanciers_commentaires": "Provide a brief summary of the creditors' comments.",
-    "actualites_presse": "Present recent press news with maximum details and clear language.",
-    "equity_story": "Present major equity events and investments (e.g., LBO, MBO) with maximum details and clear language.",
+    "actualites_presse": "Present recent press news with maximum details and clear language. One bullet point per news item.",
+    "equity_story": "Present major equity events and investments (e.g., LBO, MBO) with maximum details and clear language.One bullet point per event.",
     "creation": "Present the company's creation details or founding year with maximum details and clear language.",
     "acquisitions": "Present all key acquisitions, build-ups, mergers with dates and descriptions with maximum details and clear language."
 }}
