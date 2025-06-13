@@ -310,6 +310,38 @@ def rag_fusion_actualites(question: str) -> str:
     print("[LOG] Réponse générée.", flush=True)
     return answer
 
+import openai
+
+def rag_fusion_actualites_search_preview(question: str) -> str:
+    """
+    Interroge le modèle 'gpt-4o-mini-search-preview' 
+    qui intègre directement la recherche sur vos sources (Arx, CFNews, etc.),
+    et renvoie une synthèse chronologique des actualités.
+    """
+    print("[LOG] Démarrage web-search-preview pour la question :", question, flush=True)
+
+    # 1) Template du prompt final
+    answer_template = (
+        "You are a financial journalist and M&A expert with direct access "
+        "to the internet. Perform an internal search for all relevant "
+        "news items, then answer chronologically, always citing your sources.\n\n"
+        "Question: {question}"
+    )
+
+    # 2) Construction du prompt
+    prompt_final = answer_template.format(question=question)
+    print("[LOG] Prompt final construit :", prompt_final, flush=True)
+
+    # 3) Appel du LLM avec capacité de recherche intégrée
+    resp = openai.chat.completions.create(
+        model="gpt-4o-mini-search-preview",
+        messages=[{"role": "user", "content": prompt_final}],
+    )
+    raw = resp.choices[0].message.content
+    print("[LOG] Réponse brute reçue.", flush=True)
+
+    return raw
+
     
 def rag_fusion_fonds(question: str) -> str:
     print("[LOG] Démarrage de rag_fusion_fonds pour la question :", question)
