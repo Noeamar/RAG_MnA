@@ -335,7 +335,7 @@ Provide these alternative questions separated by newlines.
 """
     prompt_rag_fusion = ChatPromptTemplate.from_template(query_generation_template)
     generate_queries = (prompt_rag_fusion
-                        | ChatOpenAI(model='o1-mini')
+                        | ChatOpenAI(model='o1-mini', temperature=1)
                         | StrOutputParser()
                         | (lambda x: x.split("\n")))
     queries = generate_queries.invoke({"question": question})
@@ -371,7 +371,7 @@ Question: {question}
 Offer a fact-based response highlighting key investment criteria.
 """
     answer_prompt = ChatPromptTemplate.from_template(answer_template)
-    llm = ChatOpenAI(model='o1-mini')
+    llm = ChatOpenAI(model='o1-mini', temperature=1)
     final_input = {"context": context, "question": question}
     answer = (answer_prompt | llm | StrOutputParser()).invoke(final_input)
     
@@ -698,7 +698,7 @@ Provide these alternative questions separated by newlines.
 """
     prompt_rag_fusion = ChatPromptTemplate.from_template(query_generation_template)
     generate_queries = (prompt_rag_fusion 
-                        | ChatOpenAI(model='o1-mini', température=1) 
+                        | ChatOpenAI(model='o1-mini', temperature=1) 
                         | StrOutputParser() 
                         | (lambda x: x.split("\n")))
     queries = generate_queries.invoke({"question": question})
@@ -734,7 +734,7 @@ Question: {question}
 Your response should be factual, concise, and focused solely on the provided context. Include specific multiples, transaction details, and other financial metrics when possible. Always indicate the source (MergerMarket).
 """
     answer_prompt = ChatPromptTemplate.from_template(answer_template)
-    llm = ChatOpenAI(model='o1-mini', température=1)
+    llm = ChatOpenAI(model='o1-mini', temperature=1)
     final_input = {"context": context, "question": question}
     answer = (answer_prompt | llm | StrOutputParser()).invoke(final_input)
     
