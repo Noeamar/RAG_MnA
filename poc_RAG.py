@@ -334,7 +334,10 @@ def rag_fusion_actualites_search_preview(question: str) -> str:
 
     # 3) Appel du LLM avec capacité de recherche intégrée
     resp = openai.chat.completions.create(
-        model="gpt-4o-mini-search-preview",
+        model="gpt-4o-mini-search-preview", 
+        web_search_options={
+            "search_context_size": "high"
+        },
         messages=[{"role": "user", "content": prompt_final}],
     )
     raw = resp.choices[0].message.content
