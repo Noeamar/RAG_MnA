@@ -48,30 +48,59 @@ drive_service = build("drive", "v3", credentials=credentials)
 FILE_ID = "1uAgLT8ysvApjoQVeExlfgKey187t_P0oJbKRh-F4IFM"
 
 # --- 2️⃣ Utilitaires CSV sur Drive ---
+
 def load_user_data(file_id: str) -> pd.DataFrame:
+    """
+    Essaie d'identifier le type de fichier :
+    - s'il s'agit d'une Google Sheet → export en CSV
+    - sinon (CSV natif) → get_media
+    Retourne toujours un DataFrame (colonnes email, job, last_connection).
+    """
     try:
-        request = drive_service.files().get_media(fileId=file_id)
+        # 1) récupérer le mimeType
+        meta = drive_service.files().get(
+            fileId=file_id, fields="mimeType"
+        ).execute()
+        mime = meta.get("mimeType", "")
+        
+        # 2) choisir la bonne requête
+        if mime == "application/vnd.google-apps.spreadsheet":
+            request = drive_service.files().export_media(
+                fileId=file_id, mimeType="text/csv"
+            )
+        else:
+            request = drive_service.files().get_media(fileId=file_id)
+        
+        # 3) télécharger
         fh = io.BytesIO()
         downloader = MediaIoBaseDownload(fh, request)
         done = False
         while not done:
             _, done = downloader.next_chunk()
         fh.seek(0)
+        
         df = pd.read_csv(io.TextIOWrapper(fh, encoding="utf-8"))
     except Exception:
-        # fichier absent ou vide
         df = pd.DataFrame(columns=["email", "job", "last_connection"])
-    # Si l'ancien CSV n'avait pas la colonne, on l'ajoute à NaN
+    
+    # s'assurer que la colonne last_connection existe
     if "last_connection" not in df.columns:
         df["last_connection"] = pd.NA
     return df
 
 def save_user_data(df: pd.DataFrame, file_id: str):
+    """
+    Encode le DataFrame en CSV et écrase le fichier sur Drive.
+    (Ne gère PAS la mise à jour d'une Google Sheet native,
+     donc en cas de Sheet, mieux vaut repasser en CSV natif.)
+    """
     fh = io.BytesIO()
     fh.write(df.to_csv(index=False).encode("utf-8"))
     fh.seek(0)
     media = MediaIoBaseUpload(fh, mimetype="text/csv", resumable=True)
-    drive_service.files().update(fileId=file_id, media_body=media).execute()
+    drive_service.files().update(
+        fileId=file_id, media_body=media
+    ).execute()
 
 # --- 3️⃣ State init ---
 if "registered" not in st.session_state:
