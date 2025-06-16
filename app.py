@@ -115,54 +115,6 @@ elif not st.session_state.ready_to_access:
 
 
 else :
-    # 1) Récupération des credentials depuis les secrets
-    sa_info = st.secrets["gcp_service_account"]
-    credentials = service_account.Credentials.from_service_account_info(sa_info,
-        scopes=["https://www.googleapis.com/auth/drive"])
-
-    # 2) Initialisation du service Drive
-    drive = build("drive", "v3", credentials=credentials)
-
-    # 3) Fonction pour télécharger un CSV existant
-    def load_user_data(file_id: str) -> pd.DataFrame:
-        request = drive.files().get_media(fileId=file_id)
-        fh = io.BytesIO()
-        downloader = MediaIoBaseDownload(fh, request)
-        done = False
-        while not done:
-            status, done = downloader.next_chunk()
-        fh.seek(0)
-        return pd.read_csv(io.TextIOWrapper(fh, encoding="utf-8"))
-
-    # 4) Fonction pour uploader / mettre à jour le CSV
-    def save_user_data(df: pd.DataFrame, file_id: str):
-        fh = io.BytesIO()
-        fh.write(df.to_csv(index=False).encode("utf-8"))
-        fh.seek(0)
-        media = MediaIoBaseUpload(fh, mimetype="text/csv", resumable=True)
-        drive.files().update(fileId=file_id, media_body=media).execute()
-
-    # 5) Exemple d’utilisation dans Streamlit
-    FILE_ID = "ID_DE_VOTRE_FICHIER_CSV_SUR_DRIVE"
-
-    if "registered" not in st.session_state:
-        st.session_state.registered = False
-
-    if not st.session_state.registered:
-        email = st.text_input("Email")
-        job   = st.text_input("Profession")
-        if st.button("S’enregistrer"):
-            # Charger ou init
-            try:
-                df = load_user_data(FILE_ID)
-            except Exception:
-                df = pd.DataFrame(columns=["email", "job"])
-            # Ajouter et sauver
-            df = pd.concat([df, pd.DataFrame([{"email": email, "job": job}])], ignore_index=True)
-            save_user_data(df, FILE_ID)
-            st.session_state.registered = True
-            st.success("Enregistré sur Google Drive !")
-
     # ===============================
     # Main Application Logic
     # ===============================
