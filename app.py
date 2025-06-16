@@ -19,6 +19,8 @@ from langchain.document_loaders import WebBaseLoader
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseDownload, MediaIoBaseUpload
+from datetime import datetime
+import pytz
 
 # ===============================
 # Main Configuration
@@ -34,52 +36,50 @@ st.set_page_config(
 # ===============================
 user_data_path = "C:\\Users\\namar.DA-CF\\OneDrive - D&A Corporate Finance\\Documents\\poc_RAG\\Projet_test\\RAG_MnA\\user_data.csv"
 
-# --- 1️⃣ Récupérer vos identifiants Google depuis les Secrets Streamlit ---
-# Dans .streamlit/secrets.toml, vous avez défini la table [gcp_service_account]
+# --- 1️⃣ Config Google Drive via secrets ---
 sa_info = st.secrets["gcp_service_account"]
 credentials = service_account.Credentials.from_service_account_info(
     sa_info,
     scopes=["https://www.googleapis.com/auth/drive"]
 )
-
-# --- 2️⃣ Initialiser le service Google Drive API ---
 drive_service = build("drive", "v3", credentials=credentials)
 
-# ID du fichier CSV sur votre Drive (à créer / partager avec le service account)
-FILE_ID = "1uAgLT8ysvApjoQVeExlfgKey187t_P0oJbKRh-F4IFM"
+# ID du fichier CSV sur Drive (vérifiez qu'il est partagé avec le service account)
+FILE_ID = st.secrets["FILE_ID"]  # ou remplacez par la string directement
 
-# --- 3️⃣ Fonctions utilitaires pour charger et sauvegarder le CSV ---
+# --- 2️⃣ Utilitaires CSV sur Drive ---
 def load_user_data(file_id: str) -> pd.DataFrame:
-    """Télécharge le CSV depuis Drive et le renvoie en DataFrame."""
     try:
         request = drive_service.files().get_media(fileId=file_id)
         fh = io.BytesIO()
         downloader = MediaIoBaseDownload(fh, request)
         done = False
         while not done:
-            status, done = downloader.next_chunk()
+            _, done = downloader.next_chunk()
         fh.seek(0)
-        return pd.read_csv(io.TextIOWrapper(fh, encoding="utf-8"))
+        df = pd.read_csv(io.TextIOWrapper(fh, encoding="utf-8"))
     except Exception:
-        # Si le fichier n'existe pas ou erreur de lecture
-        return pd.DataFrame(columns=["email", "job"])
+        # fichier absent ou vide
+        df = pd.DataFrame(columns=["email", "job", "last_connection"])
+    # Si l'ancien CSV n'avait pas la colonne, on l'ajoute à NaN
+    if "last_connection" not in df.columns:
+        df["last_connection"] = pd.NA
+    return df
 
 def save_user_data(df: pd.DataFrame, file_id: str):
-    """Encode le DataFrame en CSV et met à jour le fichier sur Drive."""
     fh = io.BytesIO()
     fh.write(df.to_csv(index=False).encode("utf-8"))
     fh.seek(0)
     media = MediaIoBaseUpload(fh, mimetype="text/csv", resumable=True)
     drive_service.files().update(fileId=file_id, media_body=media).execute()
 
-# --- 4️⃣ Initialisation du state pour l'inscription ---
+# --- 3️⃣ State init ---
 if "registered" not in st.session_state:
     st.session_state.registered = False
-
 if "ready_to_access" not in st.session_state:
     st.session_state.ready_to_access = False
 
-# --- 5️⃣ Affichage du formulaire d'inscription tant que non-registered ---
+# --- 4️⃣ Formulaire d’inscription ---
 if not st.session_state.registered:
     st.title("Welcome to the AI for M&A Analysis 💼")
     st.write("**Please provide your email and job information to access the application.**")
@@ -92,12 +92,25 @@ if not st.session_state.registered:
     if submitted:
         if email and job:
             try:
-                # Charger les données existantes (ou initialiser)
                 df = load_user_data(FILE_ID)
-                # Ajouter la nouvelle ligne
-                new_row = pd.DataFrame([{"email": email, "job": job}])
-                df = pd.concat([df, new_row], ignore_index=True)
-                # Sauvegarder sur Drive
+
+                # format timestamp en Europe/Paris
+                tz = pytz.timezone("Europe/Paris")
+                now = datetime.now(tz).isoformat(timespec="seconds")
+
+                if email in df["email"].values:
+                    # mise à jour
+                    df.loc[df["email"] == email, "job"] = job
+                    df.loc[df["email"] == email, "last_connection"] = now
+                else:
+                    # nouvelle entrée
+                    new_row = pd.DataFrame([{
+                        "email": email,
+                        "job": job,
+                        "last_connection": now
+                    }])
+                    df = pd.concat([df, new_row], ignore_index=True)
+
                 save_user_data(df, FILE_ID)
 
                 st.session_state.registered = True
@@ -107,7 +120,7 @@ if not st.session_state.registered:
         else:
             st.error("Please fill in both fields.")
 
-# --- 6️⃣ Une fois registered, proposer l'accès à l'application ---
+# --- 5️⃣ Bouton d’accès à l’appli ---
 elif not st.session_state.ready_to_access:
     st.success("Registration successful! Click the button below to access the application.")
     if st.button("Access Application"):
