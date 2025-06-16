@@ -45,7 +45,7 @@ credentials = service_account.Credentials.from_service_account_info(
 drive_service = build("drive", "v3", credentials=credentials)
 
 # ID du fichier CSV sur Drive (vérifiez qu'il est partagé avec le service account)
-FILE_ID = st.secrets["FILE_ID"]  # ou remplacez par la string directement
+FILE_ID = "1uAgLT8ysvApjoQVeExlfgKey187t_P0oJbKRh-F4IFM"
 
 # --- 2️⃣ Utilitaires CSV sur Drive ---
 def load_user_data(file_id: str) -> pd.DataFrame:
