@@ -957,7 +957,7 @@ def fetch_links_for_year(year: int, company_name: str, client: OpenAI, min_links
         if len(all_links) >= min_links:
             break
         resp = client.chat.completions.create(
-            model="gpt-4o-search-preview",
+            model="gpt-4o-mini-search-preview",
             web_search_options={"search_context_size": "high"},
             messages=[{"role": "user", "content": query}],
         )
