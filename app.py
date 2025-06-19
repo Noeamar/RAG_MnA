@@ -13,7 +13,8 @@ from poc_RAG import (
     generate_fiche_societe,
     rag_fusion_fiche_societe_to_word_websearch,
     password_break,
-    rag_fusion_actualites_search_preview
+    rag_fusion_actualites_search_preview,
+    fetch_links_by_year_parallel
 )
 from langchain.document_loaders import WebBaseLoader
 from google.oauth2 import service_account
@@ -215,6 +216,39 @@ else :
                             st.success(answer)
                         except Exception as e:
                             st.error(f"An error occurred while generating the web-search answer: {e}")
+                            # ---------------------------------
+            # Section M&A Web‐Search par année
+            # ---------------------------------
+            st.subheader("Press Links by Year")
+            company = st.text_input("Company or Market for Press links:", key="ma_company")
+            start_year = st.number_input("Start year:", min_value=2015, max_value=2024,
+                                         value=2020, step=1, key="ma_start")
+            end_year = st.number_input("End year:", min_value=2016, max_value=2026,
+                                       value=2025, step=1, key="ma_end")
+
+            if st.button("Fetch Press Links by Year", key="ma_fetch"):
+                if not company:
+                    st.error("Please enter a company name or a market.")
+                elif start_year > end_year:
+                    st.error("Start year must be ≤ end year.")
+                else:
+                    with st.spinner("Fetching M&A links by year..."):
+                        try:
+                            links_by_year = fetch_links_by_year_parallel(
+                                company, start_year, end_year, min_links=10
+                            )
+                            st.success("Links fetched!")
+                            # Affichage
+                            total = 0
+                            for yr in range(start_year, end_year + 1):
+                                lst = links_by_year.get(yr, [])
+                                st.markdown(f"**{yr} ({len(lst)} links)**")
+                                for title, url in lst:
+                                    st.write(f"- [{title}]({url})")
+                                total += len(lst)
+                            st.markdown(f"**Total unique links:** {total}")
+                        except Exception as e:
+                            st.error(f"Error fetching links: {e}")
 
         elif menu == "Company profile":
             st.subheader("Generate a company profile")

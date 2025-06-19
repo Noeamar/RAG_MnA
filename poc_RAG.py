@@ -324,7 +324,7 @@ def rag_fusion_actualites_search_preview(question: str) -> str:
     answer_template = (
         "You are a financial journalist and M&A expert with direct access "
         "to the internet. Perform an internal search for all relevant "
-        "news items, then answer chronologically, always citing your sources.\n\n"
+        "news items, then answer chronologically, always citing your sources. You must find all the sources from the 5 precedent years (2020-2025) and list them as bullet points with just the title of the article source. \n\n"
         "Question: {question}"
     )
 
@@ -912,3 +912,86 @@ def password_break(input_pdf_bytes: bytes) -> bytes:
     output_pdf_stream.seek(0)
 
     return output_pdf_stream.getvalue()
+
+    # ===============================
+# M&A Web‐Search Helpers
+# ===============================
+import os
+import re
+import json
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from openai import OpenAI
+
+def generate_query_variants(client: OpenAI, company_name: str, year: int, n_variants: int = 5) -> list[str]:
+    """
+    Demande au LLM de paraphraser la requête de base en n_variants variantes.
+    """
+    base = f"Talk to me about {company_name} in {year}"
+    prompt = (
+        f"You are a query paraphrasing assistant. "
+        f"Generate {n_variants} distinct, concise search queries equivalent to: \"{base}\". "
+        "Return a JSON array of strings."
+    )
+    resp = client.chat.completions.create(
+        model="gpt-4o-mini-search-preview",
+        messages=[{"role": "user", "content": prompt}],
+    )
+    text = resp.choices[0].message.content
+    m = re.search(r"\[.*\]", text, flags=re.DOTALL)
+    if not m:
+        return [base]
+    try:
+        return json.loads(m.group(0))
+    except json.JSONDecodeError:
+        return [line.strip() for line in text.splitlines() if line.strip()]
+
+def fetch_links_for_year(year: int, company_name: str, client: OpenAI, min_links: int = 10) -> tuple[int, list[tuple[str,str]]]:
+    """
+    Pour une année donnée, génère des variantes de requête et récupère
+    jusqu'à min_links liens uniques via annotations.
+    """
+    variants = generate_query_variants(client, company_name, year, n_variants=8)
+    all_links: dict[str,str] = {}
+
+    for query in variants:
+        if len(all_links) >= min_links:
+            break
+        resp = client.chat.completions.create(
+            model="gpt-4o-search-preview",
+            web_search_options={"search_context_size": "high"},
+            messages=[{"role": "user", "content": query}],
+        )
+        ann = getattr(resp.choices[0].message, "annotations", [])
+        for a in ann:
+            url   = a.url_citation.url
+            title = a.url_citation.title or "(sans titre)"
+            all_links.setdefault(url, title)
+
+    # retourner au plus min_links
+    links_list = list(all_links.items())[:min_links]
+    return year, links_list
+
+def fetch_links_by_year_parallel(
+    company_name: str,
+    start_year: int,
+    end_year: int,
+    min_links: int = 10,
+    max_workers: int = 6
+) -> dict[int, list[tuple[str,str]]]:
+    """
+    Lance en parallèle fetch_links_for_year pour chaque année demandée.
+    """
+    client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+    results: dict[int, list[tuple[str,str]]] = {}
+
+    with ThreadPoolExecutor(max_workers=max_workers) as exe:
+        futures = {
+            exe.submit(fetch_links_for_year, year, company_name, client, min_links): year
+            for year in range(start_year, end_year + 1)
+        }
+        for fut in as_completed(futures):
+            yr, links = fut.result()
+            results[yr] = links
+            print(f"[LOG] Année {yr}: {len(links)} sources collectées.")
+
+    return results
